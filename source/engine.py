@@ -20,7 +20,7 @@ SIZE_NAMES = ("普通", "大", "巨型")
 RARITY_THRESHOLDS = ((72, 94, 99), (42, 76, 96))
 SIZE_THRESHOLDS = ((80, 97), (52, 88))
 IDLE_SECONDS = 60
-DEFAULT_CAST_SECONDS = 8
+CAST_SECONDS_RANGE = (5, 20)
 NORMAL_SEATS = 10
 TOTAL_SEATS = 12
 
@@ -41,7 +41,7 @@ def _name(value):
 
 
 class Engine:
-    def __init__(self, path, mode, interval=DEFAULT_CAST_SECONDS):
+    def __init__(self, path, mode, interval=None):
         self.mode = mode
         self.interval = interval
         if mode not in ("demo", "live"):
@@ -152,8 +152,9 @@ class Engine:
     def _start_cast(self, db, name, seat, now):
         if seat["cast_due_at"]:
             return f"{name} 已下竿，正在等鱼上钩"
-        db.execute("UPDATE seat SET cast_due_at=? WHERE id=?", (now + self.interval, seat["id"]))
-        return f"{name} 已下竿，等待 {self.interval:g} 秒上鱼"
+        delay = self.rng.randint(*CAST_SECONDS_RANGE) if self.interval is None else self.interval
+        db.execute("UPDATE seat SET cast_due_at=? WHERE id=?", (now + delay, seat["id"]))
+        return f"{name} 已下竿，等待 {delay:g} 秒上鱼"
 
     def _land_fish(self, db, seat, now):
         uid = seat["uid"]
@@ -249,7 +250,8 @@ class Engine:
             waiting_vip = db.execute("SELECT count(*) FROM vip_queue").fetchone()[0]
             waiting_normal = db.execute("SELECT count(*) FROM normal_queue").fetchone()[0]
             return {"mode": self.mode, "demo": self.mode == "demo", "server_time": time.time(),
-                    "cast_seconds": self.interval, "seats": seats, "ranking": ranking,
+                    "cast_seconds": self.interval, "cast_seconds_range": CAST_SECONDS_RANGE,
+                    "seats": seats, "ranking": ranking,
                     "catches": catches, "waiting_vip": waiting_vip, "waiting_normal": waiting_normal}
 
     def close(self):

@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from douyin import CallbackError, clean_name, read_events, subscribe
-from engine import DEFAULT_CAST_SECONDS, Engine
+from engine import CAST_SECONDS_RANGE, Engine
 from receipts import Receipts
 
 ASSETS = Path(__file__).resolve().parent
@@ -67,11 +67,12 @@ def main():
     parser.add_argument("--subscribe", action="store_true", help="开机时启动平台推送任务")
     parser.add_argument("--stop-push", action="store_true", help="停止对应房间的平台推送")
     parser.add_argument("--no-browser", action="store_true", help="后台运行服务")
-    parser.add_argument("--interval", type=float, default=DEFAULT_CAST_SECONDS, help="下竿后等待上鱼的秒数（默认 8）")
+    parser.add_argument("--interval", type=float,
+                        help=f"指定固定等待秒数（默认随机 {CAST_SECONDS_RANGE[0]}–{CAST_SECONDS_RANGE[1]} 秒）")
     parser.add_argument("--port", type=int, default=8786)
     parser.add_argument("--data", type=Path, default=HOME_DIR / "saves", help="存档目录")
     args = parser.parse_args()
-    if not 1 <= args.interval <= 3600:
+    if args.interval is not None and not 1 <= args.interval <= 3600:
         parser.error("interval 取 1 到 3600 秒")
     if not 0 <= args.port <= 65535:
         parser.error("port 取 0 到 65535")
