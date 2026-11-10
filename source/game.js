@@ -153,7 +153,7 @@ function announceLegendaryCatches(entries, serverTime) {
   if (legendaryCatches.length && announcementTimer === null) showLegendaryCatch();
 }
 function renderSeats(seats) {
-  const displayData = seats.map(s => [s.id,s.name,s.vip,s.rod_ready,s.vip_waiting]);
+  const displayData = seats.map(s => [s.id,s.name,s.vip,s.rod_ready,s.vip_waiting,s.queued_casts]);
   if (!changed('seats',displayData)) return;
   const occupied = seats.filter(s => s.name);
   setText('#total',occupied.length);
@@ -171,12 +171,22 @@ function renderSeats(seats) {
         charges.setAttribute('aria-label','好竿剩余'+s.rod_ready+'次');
         tile.append(charges);
       }
+      if (s.queued_casts > 0) {
+        const queued = node('span','cast-queue','+'+s.queued_casts);
+        queued.title = '待下竿 '+s.queued_casts+' 次';
+        queued.setAttribute('aria-label',queued.title);
+        tile.append(queued);
+      }
       return tile;
     }));
   }
 }
 function renderActions(s) {
-  setText('#mode span',s.demo ? '本地试玩' : '直播接入');
+  let mode = s.demo ? '本地试玩' : '抖音直播';
+  if (s.platform === 'bilibili') {
+    mode = s.live_ended ? 'B站场次已结束' : s.live_connected ? 'B站直播' : 'B站连接中';
+  }
+  setText('#mode span',mode);
   const castTime = s.cast_seconds ?? s.cast_seconds_range.join('–');
   setText('#cast-note','入座后发「钓鱼」下竿，等待 '+castTime+' 秒上鱼');
   for (const [selector, count] of [['#normal-waiting',s.waiting_normal],['#waiting',s.waiting_vip]]) {

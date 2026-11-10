@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 import webbrowser
+from contextlib import ExitStack
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -27,7 +28,7 @@ FILES = {"/": ("game.html", "text/html"), "/scene.js": ("scene.js", "application
 
 
 class Inbox:
-    """Persist a signed batch before acknowledging it; replay uses the engine's event IDs."""
+    """Persist platform events for replay using the engine's event IDs."""
     def __init__(self, path):
         self.lock = threading.Lock()
         self.db = sqlite3.connect(str(path), check_same_thread=False)
@@ -48,8 +49,9 @@ class Inbox:
             feedback = []
             for seq, *event in rows:
                 result = game.event(*event)
-                msg_type, msg_id = event[0].split(":", 1)
-                feedback.append((msg_type, msg_id, result))
+                if receipts:
+                    msg_type, msg_id = event[0].split(":", 1)
+                    feedback.append((msg_type, msg_id, result))
             if receipts:
                 receipts.register(feedback)
             with self.lock, self.db:
@@ -64,8 +66,10 @@ def demo_event(game, name, action):
 def main():
     parser = argparse.ArgumentParser(description="晚汐渔港 · 弹幕钓鱼")
     parser.add_argument("--live", action="store_true", help="连接已获授权的真实直播间")
-    parser.add_argument("--subscribe", action="store_true", help="开机时启动平台推送任务")
-    parser.add_argument("--stop-push", action="store_true", help="停止对应房间的平台推送")
+    parser.add_argument("--platform", choices=("douyin", "bilibili"), default="douyin",
+                        help="直播平台（默认 douyin）")
+    parser.add_argument("--subscribe", action="store_true", help="开机时启动抖音推送任务")
+    parser.add_argument("--stop-push", action="store_true", help="停止对应房间的抖音推送")
     parser.add_argument("--no-browser", action="store_true", help="后台运行服务")
     parser.add_argument("--interval", type=float,
                         help=f"指定固定等待秒数（默认随机 {CAST_SECONDS_RANGE[0]}–{CAST_SECONDS_RANGE[1]} 秒）")
@@ -76,28 +80,52 @@ def main():
         parser.error("interval 取 1 到 3600 秒")
     if not 0 <= args.port <= 65535:
         parser.error("port 取 0 到 65535")
-    if (args.subscribe or args.stop_push) and not args.live:
-        parser.error("订阅参数需配合 --live 使用")
+    douyin_live = args.live and args.platform == "douyin"
+    bilibili_live = args.live and args.platform == "bilibili"
+    if args.platform == "bilibili" and not args.live:
+        parser.error("B站模式请使用 --live --platform bilibili")
+    if (args.subscribe or args.stop_push) and not douyin_live:
+        parser.error("订阅参数需配合抖音 --live 模式使用")
     room_id = os.getenv("DOUYIN_ROOM_ID", "").strip()
     appid = os.getenv("DOUYIN_APP_ID", "").strip()
     secret = os.getenv("DOUYIN_PUSH_SECRET", "").strip()
-    if args.live and not (room_id and appid):
-        parser.error("直播模式需要设置 DOUYIN_ROOM_ID 和 DOUYIN_APP_ID")
-    vip_id = os.getenv("FISH_VIP_GIFT_ID", "").strip() if args.live else ""
-    rod_id = os.getenv("FISH_ROD_GIFT_ID", "").strip() if args.live else ""
+    if douyin_live and not (room_id and appid):
+        parser.error("抖音直播需要设置 DOUYIN_ROOM_ID 和 DOUYIN_APP_ID")
+    gift_prefix = "BILIBILI" if bilibili_live else "FISH"
+    vip_id = os.getenv(gift_prefix + "_VIP_GIFT_ID", "").strip() if args.live else ""
+    rod_id = os.getenv(gift_prefix + "_ROD_GIFT_ID", "").strip() if args.live else ""
+    if bilibili_live and any(value and not (value.isascii() and value.isdecimal() and value[0] != "0")
+                             for value in (vip_id, rod_id)):
+        parser.error("B站礼物 ID 必须是正整数 gift_id")
     if vip_id and vip_id == rod_id:
-        parser.error("两种礼物必须使用不同的 sec_gift_id")
+        parser.error("两种礼物必须使用不同的 ID")
     gift_actions = {key: value for key, value in [(vip_id, "vip"), (rod_id, "rod")] if key}
     if args.stop_push:
         subscribe(room_id, bool(gift_actions), stopping=True)
         return
-    if args.live and not secret:
-        parser.error("直播模式需要设置 DOUYIN_PUSH_SECRET")
+    if douyin_live and not secret:
+        parser.error("抖音直播需要设置 DOUYIN_PUSH_SECRET")
     if args.subscribe and not (os.getenv("DOUYIN_APP_ID") and
                                (os.getenv("DOUYIN_APP_SECRET") or os.getenv("DOUYIN_ACCESS_TOKEN"))):
         parser.error("自动订阅还需要 AppID 和应用密钥或有效令牌，详见使用说明")
     mode = "live" if args.live else "demo"
-    key = "live-" + hashlib.sha256(room_id.encode()).hexdigest()[:20] if args.live else "demo"
+    key = "live-" + hashlib.sha256(room_id.encode()).hexdigest()[:20] if douyin_live else "demo"
+    bili = None
+    if bilibili_live:
+        bili_app = os.getenv("BILIBILI_APP_ID", "").strip()
+        bili_key = os.getenv("BILIBILI_ACCESS_KEY_ID", "").strip()
+        bili_secret = os.getenv("BILIBILI_ACCESS_KEY_SECRET", "").strip()
+        bili_code = os.getenv("BILIBILI_ANCHOR_CODE", "").strip()
+        if not (bili_app.isascii() and bili_app.isdecimal() and 0 < len(bili_app) <= 19
+                and 0 < int(bili_app) < 2**63 and bili_key and bili_secret and bili_code):
+            parser.error("B站直播需要有效的 BILIBILI_APP_ID、BILIBILI_ACCESS_KEY_ID、"
+                         "BILIBILI_ACCESS_KEY_SECRET 和 BILIBILI_ANCHOR_CODE")
+        try:
+            from bilibili import Session as BilibiliSession
+
+            bili = BilibiliSession(int(bili_app), bili_key, bili_secret)
+        except ImportError:
+            parser.error("B站直播依赖未安装，请执行 python -m pip install -r source/requirements-bilibili.txt")
     args.data.mkdir(parents=True, exist_ok=True)
     # Cache only shipped browser assets. No filesystem path is formed from a request.
     assets = {path: ((ASSETS / filename).read_bytes(), typ + "; charset=utf-8")
@@ -106,10 +134,11 @@ def main():
         raise FileNotFoundError("缺少画面文件，请使用完整发行包或源码目录")
     gifts = {
         "vip": not args.live or bool(vip_id), "rod": not args.live or bool(rod_id),
-        "vip_label": os.getenv("FISH_VIP_GIFT_NAME", "") or "席位礼物",
-        "rod_label": os.getenv("FISH_ROD_GIFT_NAME", "") or "鱼竿礼物",
+        "vip_label": os.getenv(gift_prefix + "_VIP_GIFT_NAME", "") or "席位礼物",
+        "rod_label": os.getenv(gift_prefix + "_ROD_GIFT_NAME", "") or "鱼竿礼物",
     }
     done = threading.Event()
+    interaction_route = "/douyin" if douyin_live else "/simulate" if not args.live else None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *values):
@@ -138,6 +167,10 @@ def main():
                 state = game.state()
                 state["gifts"] = gifts
                 state["receipts"] = pending
+                state["platform"] = args.platform if args.live else None
+                if bili:
+                    state["live_connected"] = bili.connected
+                    state["live_ended"] = bili.ended
                 return self.send(200, state)
             if path == "/favicon.ico":
                 return self.send(204, b"")
@@ -145,7 +178,7 @@ def main():
 
         def do_POST(self):
             path = urlsplit(self.path).path
-            if path != ("/douyin" if args.live else "/simulate") and not (path == "/receipts" and receipts):
+            if path != interaction_route and not (path == "/receipts" and receipts):
                 return self.send(404, {})
             if self.headers.get_content_type() != "application/json":
                 return self.send(415, {})
@@ -220,28 +253,43 @@ def main():
                 logging.error("启动推送失败：%s", exc)
         logging.error("请核对权限和挂载状态，成功后重启并带 --subscribe。")
 
-    with ThreadingHTTPServer(("127.0.0.1", args.port), Handler) as server:
+    with ThreadingHTTPServer(("127.0.0.1", args.port), Handler) as server, ExitStack() as cleanup:
+        if bili:
+            cleanup.callback(bili.close)
+            try:
+                bili_room = bili.start(bili_code)
+            except RuntimeError as error:
+                parser.exit(1, f"{error}\n")
+            key = "bilibili-" + hashlib.sha256(f"{bili_app}:{bili_room}".encode()).hexdigest()[:20]
         game = Engine(args.data / (key+".sqlite3"), mode, args.interval)
         inbox = Inbox(args.data / (key+"-inbox.sqlite3")) if args.live else None
-        receipts = Receipts(args.data / (key+"-receipts.sqlite3"), room_id, appid) if args.live else None
+        receipts = Receipts(args.data / (key+"-receipts.sqlite3"), room_id, appid) if douyin_live else None
         address = f"http://127.0.0.1:{server.server_port}/"
-        print("晚汐渔港", "· 直播接入" if args.live else "· 本地试玩", flush=True)
+        print("晚汐渔港", "· B站直播" if bili else "· 抖音直播" if douyin_live else "· 本地试玩", flush=True)
         print("操作台", address, "\n投屏页", address+"?broadcast=1", "\n存档", args.data,
               "\n关闭此窗口或按 Ctrl+C 停止。", flush=True)
-        threading.Thread(target=loop, daemon=True).start()
-        if receipts and appid and (os.getenv("DOUYIN_APP_SECRET") or os.getenv("DOUYIN_ACCESS_TOKEN")):
-            threading.Thread(target=report_receipts, daemon=True).start()
-        if args.subscribe:
-            threading.Thread(target=start_push, daemon=True).start()
-        if not args.no_browser:
-            webbrowser.open(address)
+        bili_worker = None
         try:
+            threading.Thread(target=loop, daemon=True).start()
+            if receipts and appid and (os.getenv("DOUYIN_APP_SECRET") or os.getenv("DOUYIN_ACCESS_TOKEN")):
+                threading.Thread(target=report_receipts, daemon=True).start()
+            if args.subscribe:
+                threading.Thread(target=start_push, daemon=True).start()
+            if bili:
+                worker = threading.Thread(target=bili.run, args=(done, inbox, gift_actions), daemon=True)
+                worker.start()
+                bili_worker = worker
+            if not args.no_browser:
+                webbrowser.open(address)
             server.serve_forever()
         except KeyboardInterrupt:
             pass
         finally:
             done.set()
+            if bili_worker:
+                bili_worker.join(timeout=8)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     main()

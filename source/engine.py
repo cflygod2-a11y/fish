@@ -61,7 +61,8 @@ class Engine:
             CREATE TABLE IF NOT EXISTS seat(
                 id INTEGER PRIMARY KEY, uid TEXT UNIQUE REFERENCES angler(uid),
                 idle_until REAL NOT NULL DEFAULT 0, last_at REAL NOT NULL DEFAULT 0,
-                cast_due_at REAL NOT NULL DEFAULT 0, seat_order INTEGER NOT NULL DEFAULT 0
+                cast_due_at REAL NOT NULL DEFAULT 0, seat_order INTEGER NOT NULL DEFAULT 0,
+                queued_casts INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS normal_queue(
                 seq INTEGER PRIMARY KEY, uid TEXT UNIQUE NOT NULL REFERENCES angler(uid)
@@ -91,6 +92,8 @@ class Engine:
             if "seat_order" not in seat_columns:
                 db.execute("ALTER TABLE seat ADD COLUMN seat_order INTEGER NOT NULL DEFAULT 0")
                 db.execute("UPDATE seat SET seat_order=id WHERE uid IS NOT NULL")
+            if "queued_casts" not in seat_columns:
+                db.execute("ALTER TABLE seat ADD COLUMN queued_casts INTEGER NOT NULL DEFAULT 0")
             db.executemany("INSERT OR IGNORE INTO seat(id) VALUES(?)", [(i,) for i in range(1, TOTAL_SEATS + 1)])
 
     @contextmanager
@@ -106,7 +109,7 @@ class Engine:
                 raise
 
     def _release_seat(self, db, seat_id):
-        db.execute("""UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0,seat_order=0
+        db.execute("""UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0,seat_order=0,queued_casts=0
                       WHERE id=?""", (seat_id,))
 
     def _fill_seats(self, db, now, vip):
@@ -123,13 +126,14 @@ class Engine:
             if not seat:
                 break
             uid = member["uid"]
-            previous = db.execute("SELECT id,cast_due_at FROM seat WHERE uid=?", (uid,)).fetchone()
+            previous = db.execute("SELECT id,cast_due_at,queued_casts FROM seat WHERE uid=?", (uid,)).fetchone()
             due = previous["cast_due_at"] if previous else 0
+            queued = previous["queued_casts"] if previous else 0
             if previous:
                 self._release_seat(db, previous["id"])
-            db.execute("""UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=?,
+            db.execute("""UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=?,queued_casts=?,
                           seat_order=(SELECT max(seat_order)+1 FROM seat) WHERE id=?""",
-                       (uid, now + IDLE_SECONDS, due, seat["id"]))
+                       (uid, now + IDLE_SECONDS, due, queued, seat["id"]))
             db.execute(f"DELETE FROM {queue} WHERE uid=?", (uid,))
             if vip:
                 db.execute("DELETE FROM normal_queue WHERE uid=?", (uid,))
@@ -149,10 +153,13 @@ class Engine:
                               (uid,)).fetchone()[0]
         return f"{label}已满，{name} 候补第 {position} 位"
 
+    def _cast_delay(self):
+        return self.rng.randint(*CAST_SECONDS_RANGE) if self.interval is None else self.interval
+
     def _start_cast(self, db, name, seat, now):
         if seat["cast_due_at"]:
             return f"{name} 已下竿，正在等鱼上钩"
-        delay = self.rng.randint(*CAST_SECONDS_RANGE) if self.interval is None else self.interval
+        delay = self._cast_delay()
         db.execute("UPDATE seat SET cast_due_at=? WHERE id=?", (now + delay, seat["id"]))
         return f"{name} 已下竿，等待 {delay:g} 秒上鱼"
 
@@ -167,11 +174,14 @@ class Engine:
         db.execute("""UPDATE angler SET rods=rods-?, best=CASE
                       WHEN best IS NULL OR ?>(SELECT mm FROM catch WHERE id=best) THEN ?
                       ELSE best END WHERE uid=?""", (int(upgraded), mm, caught, uid))
-        db.execute("UPDATE seat SET last_at=?,idle_until=?,cast_due_at=0 WHERE id=?",
-                   (now, now + IDLE_SECONDS, seat["id"]))
+        queued = seat["queued_casts"]
+        next_due = now + self._cast_delay() if queued else 0
+        db.execute("UPDATE seat SET last_at=?,idle_until=?,cast_due_at=?,queued_casts=? WHERE id=?",
+                   (now, now + IDLE_SECONDS, next_due, max(0, queued - 1), seat["id"]))
 
     def _advance(self, db, now):
-        ready = db.execute("""SELECT s.id, a.uid, a.name, a.rods FROM seat s JOIN angler a ON a.uid=s.uid
+        ready = db.execute("""SELECT s.id, s.queued_casts, a.uid, a.name, a.rods
+                              FROM seat s JOIN angler a ON a.uid=s.uid
                               WHERE s.cast_due_at>0 AND s.cast_due_at<=? ORDER BY s.cast_due_at, s.id""",
                            (now,)).fetchall()
         for seat in ready:
@@ -181,7 +191,7 @@ class Engine:
     def _handle(self, db, uid, name, action, count, now):
         db.execute("""INSERT INTO angler(uid,name) VALUES(?,?) ON CONFLICT(uid)
                       DO UPDATE SET name=excluded.name""", (uid, name))
-        seat = db.execute("SELECT id,cast_due_at FROM seat WHERE uid=?", (uid,)).fetchone()
+        seat = db.execute("SELECT id,cast_due_at,queued_casts FROM seat WHERE uid=?", (uid,)).fetchone()
         if action == "rod":
             db.execute("UPDATE angler SET rods=rods+? WHERE uid=?", (count, uid))
             if seat:
@@ -189,6 +199,10 @@ class Engine:
             return f"{name} 获得 {count} 次好竿，入座后优先使用"
         if action == "fish":
             if seat:
+                if seat["cast_due_at"]:
+                    queued = seat["queued_casts"] + 1
+                    db.execute("UPDATE seat SET queued_casts=? WHERE id=?", (queued, seat["id"]))
+                    return f"{name} 的钓鱼指令已排队，待下竿 {queued} 次"
                 return self._start_cast(db, name, seat, now)
             return f"{name} 请先发送「加入」入座，再发送「钓鱼」"
         if action == "leave":
@@ -232,7 +246,7 @@ class Engine:
         with self._transaction(read=True) as db:
             seats = [dict(r) for r in db.execute("""
                 SELECT s.id,s.id>10 AS vip,a.name,coalesce(a.rods,0) AS rod_ready,
-                    s.last_at AS last_catch_at,
+                    s.last_at AS last_catch_at,s.queued_casts,
                     EXISTS(SELECT 1 FROM vip_queue q WHERE q.uid=s.uid) AS vip_waiting
                 FROM seat s LEFT JOIN angler a ON a.uid=s.uid ORDER BY s.id
             """)]
