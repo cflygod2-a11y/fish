@@ -16,6 +16,8 @@
     "8": ["111","101","111","101","111"], "9": ["111","101","111","001","111"]
   };
   const coats = ["#e18969", "#81b9ab", "#f6bc68", "#97a4cb", "#a4af76", "#d28a98"];
+  const catchDuration = 3.2;
+  const sparkles = [[-1,-.3], [1,-.35], [-.55,-.95], [1,.25], [-1,.3]];
 
   function seed(value) {
     let n = value >>> 0;
@@ -255,12 +257,15 @@
       rect(g,x-5,y-15,1,2,"#ffe094");rect(g,x-4,y-6,7,1,"#943f4e");
     }
   }
-  function angler(g,x,y,index,seat,t) {
-    const coat=coats[index%coats.length], gold=Number(seat.rod_ready)>0;
-    rect(g,x-3,y-10,5,6,"#384a50");rect(g,x-2,y-10,4,5,coat);
+  function anglerHead(g,x,y,coat) {
     rect(g,x-2,y-15,5,5,"#674f48");rect(g,x-1,y-14,4,4,"#e9b78b");
     rect(g,x+2,y-13,1,1,"#514b50");rect(g,x-1,y-11,2,1,"#c88e73");
     rect(g,x-3,y-16,6,2,coat);rect(g,x-4,y-14,9,1,"#47565a");
+  }
+  function angler(g,x,y,index,seat,t) {
+    const coat=coats[index%coats.length], gold=Number(seat.rod_ready)>0;
+    rect(g,x-3,y-10,5,6,"#384a50");rect(g,x-2,y-10,4,5,coat);
+    anglerHead(g,x,y,coat);
     rect(g,x-3,y-4,7,2,"#4a5360");rect(g,x+2,y-3,2,3,"#485866");rect(g,x+2,y-1,4,1,"#635453");
     rect(g,x+2,y-8,4,2,"#d7a17b");rect(g,x+1,y-9,2,3,coat);
     const castX=x+15, destination=x+21+(index%3);
@@ -271,36 +276,72 @@
     rect(g,destination-2,by+2,5,1,"#acc0a5");
     rect(g,destination,by-2,1,2,"#f6c693");rect(g,destination-1,by,3,2,"#bd6559");
   }
-  function landedFish(g,x,y,record,age) {
-    const duration=2.6;
-    if(!window.FishSprites || age<0 || age>=duration) return;
-    const progress=age/duration;
-    const arc=Math.sin(progress*Math.PI);
-    // A full-width catch still fits between neighbouring casts in the six-seat row.
-    const size=Math.min(1,Math.sqrt(Math.max(0,record.cm)/380));
-    const width=Math.round(26+8*size), height=Math.round(16+3*size);
-    const centerX=x+20+Math.round(4*progress), waterY=y+30;
-    const top=waterY-Math.round(11*arc)-Math.floor(height/2);
-    rect(g,centerX-6,waterY+4,13,1,"#527e79");
-    if(progress<.3 || progress>.73) {
-      rect(g,centerX-9,waterY+3,5,1,"#d4d4b5");
-      rect(g,centerX+5,waterY+2,4,1,"#dedcbd");
-      rect(g,centerX-8,waterY,1,2,"#c4cec0");
+  function ease(value) {
+    const t=Math.max(0,Math.min(1,value));
+    return t*t*(3-2*t);
+  }
+  function celebrateCatch(g,x,y,index,record,age) {
+    const coat=coats[index%coats.length];
+    const fade=ease((catchDuration-age)/.42);
+    const stand=ease(age/.34)*fade;
+    const raise=ease((age-.16)/.42)*fade;
+    const bodyY=y-Math.round(8*stand);
+    const fishY=Math.round(bodyY-8-18*raise+Math.sin(age*7)*raise);
+    // Compress the 10–380 cm range to 9–37 pixels so fish fit between seats.
+    const cm=Math.max(10,Math.min(380,record.cm));
+    const width=Math.round(4+1.7*Math.sqrt(cm));
+    const handY=fishY+Math.round(width*.17);
+    const grip=Math.min(5,Math.round(width*.24));
+
+    // Feet stay on the dock while the legs straighten and the hands lift the catch.
+    rect(g,x-3,bodyY-5,3,y-bodyY+4,"#485866");
+    rect(g,x+1,bodyY-5,3,y-bodyY+4,"#485866");
+    rect(g,x-4,y-1,4,1,"#635453");rect(g,x+1,y-1,5,1,"#635453");
+    rect(g,x-4,bodyY-11,8,7,"#384a50");rect(g,x-3,bodyY-10,6,5,coat);
+    anglerHead(g,x,bodyY,coat);
+    for(const side of [-1,1]) {
+      const elbow=x+7*side, hand=x+grip*side;
+      const elbowY=Math.round((bodyY-9+handY)/2);
+      line(g,x+3*side,bodyY-9,elbow,elbowY,coat);
+      line(g,elbow,elbowY,hand,handY,coat);
+      rect(g,hand-1,handY-1,3,3,"#e9b78b");
     }
-    window.FishSprites.draw(g,record.fish,centerX-Math.floor(width/2),top,width,height);
+
+    const half=Math.floor(width/2);
+    g.save();
+    g.globalAlpha=fade;
+    window.FishSprites.draw(g,record.fish,x-half,fishY-half,width,width);
+    if(record.rarity==="稀有" || record.rarity==="传说") {
+      sparkles.forEach(([dx,dy],i)=>{
+        const twinkle=(1+Math.sin(age*10+i*2.2))/2;
+        const sx=x+dx*(half+2), sy=fishY+dy*(half+2)+Math.round(Math.sin(age*4+i)*2);
+        const radius=twinkle>.65?2:1;
+        g.globalAlpha=raise*(.35+.65*twinkle);
+        rect(g,sx-radius,sy,2*radius+1,1,"#ffd477");
+        rect(g,sx,sy-radius,1,2*radius+1,"#ffd477");
+        rect(g,sx,sy,1,1,"#fff5c9");
+      });
+    }
+    g.restore();
   }
   function updateCatchState(scene,state,time) {
     if(scene.state===state) return;
     scene.state=state;
-    scene.snapshotTime=time;
     scene.seats=new Map((state?.seats || []).map(seat=>[seat.id,seat]));
-    scene.caught=new Map();
+    const caught=new Map();
     for(const record of state?.catches || []) {
       const seat=scene.seats.get(record.seat);
       if(seat?.name && seat.name===record.name && seat.last_catch_at===record.caught_at) {
-        scene.caught.set(seat.id,record);
+        const previous=scene.caught.get(seat.id);
+        if(previous?.record.id===record.id) {
+          caught.set(seat.id,previous);
+        } else if(state.server_time-record.caught_at<catchDuration) {
+          // Start at the rise on the first visible frame, even between state polls.
+          caught.set(seat.id,{record,start:time});
+        }
       }
     }
+    scene.caught=caught;
   }
   function numberPlate(g,x,y,id,vip,active) {
     const width=id<10?14:18, left=x-Math.floor(width/2);
@@ -355,9 +396,12 @@
     spots.forEach(([x,y],idx)=>{
       const id=idx+1, seat=scene.seats.get(id)||{}, vip=seat.vip || id>=11;
       chair(g,x,y,vip);
-      if(seat.name) angler(g,x,y,idx,seat,t);
-      const record=scene.caught.get(id);
-      if(record) landedFish(g,x,y,record,(state.server_time-record.caught_at)+(t-scene.snapshotTime));
+      const catchAnimation=scene.caught.get(id);
+      if(catchAnimation && window.FishSprites && t-catchAnimation.start<catchDuration) {
+        celebrateCatch(g,x,y,idx,catchAnimation.record,t-catchAnimation.start);
+      } else if(seat.name) {
+        angler(g,x,y,idx,seat,t);
+      }
       numberPlate(g,x,y,id,vip,Boolean(seat.name));
     });
   };
