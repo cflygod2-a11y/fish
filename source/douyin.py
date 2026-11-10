@@ -11,6 +11,7 @@ import urllib.request
 
 
 SIGNED_FIELDS = ("x-msg-type", "x-nonce-str", "x-roomid", "x-timestamp")
+COMMENT_ACTIONS = {"加入": "join", "离开": "leave", "钓鱼": "fish"}
 TOKEN_URL = "https://developer.toutiao.com/api/apps/v2/token"
 TASK_URL = "https://webcast.bytedance.com/api/live_data/task/"
 
@@ -69,7 +70,7 @@ def read_events(headers, body, secret, expected_room, gift_actions):
             continue
         if kind == "live_comment":
             content = event.get("content", "")
-            action = {"加入": "join", "离开": "leave"}.get(content.strip()) if isinstance(content, str) else None
+            action = COMMENT_ACTIONS.get(content.strip()) if isinstance(content, str) else None
             count = 1
         else:
             gift_id = event.get("sec_gift_id")

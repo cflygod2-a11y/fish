@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from douyin import CallbackError, clean_name, read_events, subscribe
-from engine import Engine
+from engine import DEFAULT_CAST_SECONDS, Engine
 from receipts import Receipts
 
 ASSETS = Path(__file__).resolve().parent
@@ -67,12 +67,14 @@ def main():
     parser.add_argument("--subscribe", action="store_true", help="开机时启动平台推送任务")
     parser.add_argument("--stop-push", action="store_true", help="停止对应房间的平台推送")
     parser.add_argument("--no-browser", action="store_true", help="后台运行服务")
-    parser.add_argument("--interval", type=float, default=8, help="两次抛竿之间的秒数（默认 8）")
+    parser.add_argument("--interval", type=float, default=DEFAULT_CAST_SECONDS, help="下竿后等待上鱼的秒数（默认 8）")
     parser.add_argument("--port", type=int, default=8786)
     parser.add_argument("--data", type=Path, default=HOME_DIR / "saves", help="存档目录")
     args = parser.parse_args()
-    if not 1 <= args.interval <= 3600 or not 0 <= args.port <= 65535:
-        parser.error("interval 取 1 到 3600，port 取 0 到 65535")
+    if not 1 <= args.interval <= 3600:
+        parser.error("interval 取 1 到 3600 秒")
+    if not 0 <= args.port <= 65535:
+        parser.error("port 取 0 到 65535")
     if (args.subscribe or args.stop_push) and not args.live:
         parser.error("订阅参数需配合 --live 使用")
     room_id = os.getenv("DOUYIN_ROOM_ID", "").strip()
@@ -184,7 +186,7 @@ def main():
                     demo_event(game, name, "join" if index < 10 else "vip")
                 return self.send(200, {"message": "已安排体验钓手入座，空位优先，已有钓手保留。"})
             name = clean_name(req.get("name"))
-            if not name or action not in ("join", "leave", "vip", "rod"):
+            if not name or action not in ("join", "leave", "vip", "rod", "fish"):
                 return self.send(400, {"message": "请填写钓手名，并选择有效操作。"})
             return self.send(200, {"message": demo_event(game, name, action)})
 
