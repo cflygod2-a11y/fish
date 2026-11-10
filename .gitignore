@@ -1,0 +1,22 @@
+# Windows 发布包与构建产物
+/_internal/
+/*.exe
+/build/
+/dist/
+
+# 本地存档（包括自定义存档目录下的数据库）
+saves/
+*.sqlite3
+*.sqlite3-*
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 本地配置及凭据
+.env
+.env.*
+!.env.example
+*.log

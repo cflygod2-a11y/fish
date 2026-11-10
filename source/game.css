@@ -1,0 +1,148 @@
+:root {
+  color-scheme: dark;
+  --sky: #b3d3d6; --sea: #81c8c1; --sun: #ffca81; --ink: #101d27;
+  --panel: #1b2d37; --inner: #16252f; --line: #3c535b; --soft: #aec3c5; --paper: #ebedda;
+  font-family: "Microsoft YaHei UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--paper); background: var(--ink);
+}
+* {box-sizing:border-box}
+[hidden] {display:none !important}
+body {margin:0; min-height:100vh; background:radial-gradient(ellipse at 18% 0%,#21343c 0,transparent 55%),var(--ink)}
+button,input {font:inherit}
+.shell {width:min(1112px,100%); margin:auto; padding:23px 24px 36px}
+.mast {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
+.identity,.tools,.head-label,.seat-head,.control-row,.sim-actions,.directions>div {display:flex;align-items:center}
+.identity {gap:13px}
+.emblem {display:grid;place-items:center;width:54px;height:48px;background:#254247;box-shadow:inset 0 0 0 2px #48625d;clip-path:polygon(4px 0,calc(100% - 4px) 0,calc(100% - 4px) 4px,100% 4px,100% calc(100% - 4px),calc(100% - 4px) calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,4px calc(100% - 4px),0 calc(100% - 4px),0 4px,4px 4px)}
+.emblem canvas {width:48px;height:32px}
+canvas {image-rendering:pixelated}
+h1,h2,h3,p,ol,ul {margin:0}
+h1 {font-family:"STSong","SimSun",serif;font-size:clamp(27px,4vw,39px);line-height:1.15;letter-spacing:.06em;color:#f7e6bd}
+h2 {font-weight:680;font-size:18px;letter-spacing:.035em}
+.tools {gap:16px;font-size:13px}
+.mode,.occupancy {display:inline-flex;gap:7px;align-items:center}
+.mode {border:1px solid #435b58;background:#1b3031;color:#b9d5bb;padding:5px 9px}
+.mode i,.activity-dot {width:6px;height:6px;background:#91cfa1}
+.broadcast-link {text-decoration:none;color:var(--soft)}
+.broadcast-link:hover {color:var(--sun)}
+.broadcast-link b {margin-left:2px;color:var(--sun)}
+.dashboard {display:grid;grid-template-columns:minmax(0,1.58fr) minmax(282px,1fr);grid-template-areas:"harbor board" "atlas atlas" "dock log" "sim sim";gap:14px;align-items:start}
+.panel {min-width:0;background:var(--panel);border:1px solid var(--line);box-shadow:0 3px 0 #0a151d;overflow:hidden}
+.harbor-panel {grid-area:harbor}.board {grid-area:board}.dock {grid-area:dock}.log {grid-area:log}.simulator {grid-area:sim}
+.strip,.panel-head {display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:12px 16px;min-height:48px}
+.strip h2:before {display:inline-block;content:"";width:6px;height:12px;background:var(--sea);margin:0 9px -1px 0}
+.occupancy,.subtle,.seat-head span {font-size:12px;color:var(--soft)}
+.occupancy {gap:4px}.occupancy i {margin-right:2px}.occupancy b {color:var(--paper);font-family:Consolas,monospace}
+.scene-wrap {background:#325963}
+#harbor {width:100%;height:auto;display:block;aspect-ratio:32/17}
+.directions {display:flex;gap:7px 17px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);min-height:41px;background:#203339;font-size:12px;color:var(--soft)}
+.directions>div {gap:7px}
+kbd {padding:2px 5px;border:1px solid #739d8f;background:#274a47;color:#cfecce;font:inherit;font-weight:600;white-space:nowrap}
+.receipt-note {flex-basis:100%;color:var(--sea);overflow-wrap:anywhere}
+.gift-note:before {content:"✦";color:var(--sun)}.gift-note {color:#eac896}
+.head-label {gap:8px}.trophy {font-size:16px;color:var(--sun)}
+.ranking,.catch-list {list-style:none;padding:0 14px}
+.rank-row,.catch-row {display:flex;align-items:center;border-bottom:1px solid #354a51;gap:9px;min-width:0}
+.rank-row {padding:10px 0;min-height:58px}
+.rank-row:last-child,.catch-row:last-child {border-bottom:0}
+.rank-no {width:22px;flex:none;font:700 16px/1 Consolas,monospace;text-align:center;color:#9db4b6}
+.rank-row:first-child .rank-no,.rank-row:first-child .measurement {color:var(--sun)}
+.rank-row:first-child .rank-no {background:#514331;border:1px solid #806543;width:23px;height:23px;display:grid;place-items:center;color:var(--sun)}
+.sprite {width:72px;height:40px;flex:none;display:block;object-fit:contain}
+.fish-desc {display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.fish-name,.angler,.catch-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fish-name {font-size:14px;font-weight:650}
+.angler {color:var(--soft);font-size:12px}
+.rank-species {display:flex;align-items:center;gap:6px;min-width:0}
+.rarity {font-size:11px;border:1px solid currentColor;padding:0 3px;line-height:16px;white-space:nowrap}
+.r0 {color:#b1c1ba}.r1 {color:#81cdb1}.r2 {color:#a1bfff}.r3 {color:#e9b8e2}
+.measurement {font:700 20px/1 Consolas,monospace;color:#dce8d9;white-space:nowrap}
+.measurement small {font:400 11px/1 Consolas,monospace;color:var(--soft);margin-left:3px}
+.empty {display:flex;align-items:center;justify-content:center;gap:12px;color:var(--soft);font-size:13px;padding:24px 12px}
+#ranking-empty {min-height:142px;flex-direction:column}#empty-fish {width:72px;height:48px;opacity:.75}
+.seat-head {gap:8px;margin:10px 14px 6px}
+h3 {font-size:12px;letter-spacing:.04em}.seat-head>span {font-family:Consolas,monospace}
+.seat-head.vip h3 {color:var(--sun)}.seat-head .waiting {font-family:inherit;color:var(--sun);margin-left:auto}
+.seat-grid {padding:0 14px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+.berth {display:flex;gap:5px;align-items:center;min-height:29px;padding:3px 6px;border:1px dashed #41575e;min-width:0;color:#94aaac;background:#182a32}
+.berth .index {color:#90a7a9;font:650 11px Consolas,monospace}
+.berth .seat-name {font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.berth.filled {background:#253e40;border:1px solid #57776c;color:#e2ecd8}
+.berth.filled .index {color:#a4d0b2}
+.vip-grid {grid-template-columns:repeat(2,minmax(0,1fr));padding-bottom:13px}
+.vip-grid .berth {border-color:#806944;background:#32332e}.vip-grid .index {color:#e3b87a}
+.rod-count {margin-left:auto;color:var(--sun);font:600 11px Consolas,monospace;white-space:nowrap}
+.rules {border-top:1px solid #344951;font-size:12px;color:var(--soft)}
+.rules summary {cursor:pointer;padding:9px 14px;width:max-content}
+.rules table {border-collapse:collapse;margin:2px 14px 7px;color:var(--paper)}
+.rules th,.rules td {font-weight:400;padding:3px 13px 3px 0;text-align:left}
+.rules th {color:var(--soft)}.rules p {padding:0 14px 12px;line-height:1.6}
+.catch-row {min-height:43px;gap:8px;padding:6px 0}
+.catch-row .sprite {width:64px;height:36px}.catch-main {flex:1;min-width:0}
+.catch-name {font-size:13px;color:var(--paper)}.catch-name b {font-weight:600}
+.catch-rod {margin-top:2px;font-size:11px;color:var(--soft)}.catch-row .measurement {font-size:16px}
+.atlas {grid-area:atlas}
+.atlas summary {list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:11px 16px;font-size:16px;font-weight:650}
+.atlas summary::-webkit-details-marker {display:none}
+.atlas-count {font:12px/1.2 "Microsoft YaHei UI",sans-serif;color:var(--soft)}
+.atlas summary:after {content:"";margin-left:auto;width:7px;height:7px;border-right:2px solid var(--sea);border-bottom:2px solid var(--sea);transform:rotate(45deg);position:relative;top:-2px}
+.atlas[open] summary {border-bottom:1px solid var(--line)}
+.atlas[open] summary:after {top:2px;transform:rotate(225deg)}
+.atlas summary:focus-visible {outline-offset:-3px}
+.species-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;list-style:none;gap:10px;padding:13px;background:#172832}
+.species-card {display:flex;flex-direction:column;min-width:0;border:1px solid #3e575e;background:#1d313c}
+.species-stage {min-height:91px;display:grid;place-items:center;padding:8px;background:linear-gradient(150deg,#2d5159,#233a47 70%);border-bottom:1px solid #354d56}
+.species-stage .sprite {width:min(160px,100%);height:auto}
+.species-caption {padding:9px 10px 10px}
+.species-label {display:flex;align-items:center;justify-content:space-between;gap:6px}
+.species-label h3 {font-size:15px;letter-spacing:.025em;color:var(--paper)}
+.species-caption p {margin:4px 0 0;color:var(--soft);font-size:12px;line-height:1.6}
+.connection {padding:8px 12px;background:#413829;border:1px solid #7e6542;color:var(--sun);margin-bottom:12px;font-size:13px}
+.simulator {background:#1b2a33}
+.simulator .panel-head {padding-block:8px}
+button {cursor:pointer;min-height:31px;padding:4px 10px;border:1px solid #587077;background:#2b3f47;color:var(--paper);border-radius:2px;font-size:12px}
+button:enabled:hover {background:#3b5158;border-color:#8ba49e}
+button:disabled {opacity:.45;cursor:default}
+button.join {background:#8bbfaa;color:#132d2e;border-color:#a9dac5;font-weight:700}
+button.join:enabled:hover {background:#a6d6c1}
+#sim-vip,#sim-rod {color:#efd0a0;border-color:#6b624e}
+#populate {color:var(--sea);background:transparent}
+.control-row {gap:9px;padding:13px 14px 0;flex-wrap:wrap;font-size:13px}
+.control-row input {width:108px;height:31px;padding:4px 7px;background:var(--inner);color:var(--paper);border:1px solid #50676a;border-radius:2px}
+.control-row label {color:var(--soft)}
+.sim-actions {gap:6px;flex-wrap:wrap}
+#sim-result {padding:8px 14px 13px;color:var(--soft);font-size:12px;min-height:34px}
+:focus-visible {outline:2px solid var(--sun);outline-offset:2px}
+@media (min-width:761px){
+  .board,.log {align-self:stretch}.board .rank-row {min-height:clamp(52px,5.4vw,66px)}
+}
+@media (max-width:760px){
+  .shell {max-width:570px;padding:12px 10px 24px}.mast {margin:0 2px 12px}
+  .identity {gap:9px}.emblem {width:42px;height:38px}.emblem canvas {width:38px;height:26px}
+  .tools {gap:8px;font-size:12px}.mode {padding:4px 7px}
+  .dashboard {grid-template-columns:minmax(0,1fr);grid-template-areas:"harbor" "board" "atlas" "dock" "sim" "log";gap:10px}
+  .panel-head,.strip {padding:8px 12px;min-height:39px}h2 {font-size:16px}
+  .rank-row {min-height:44px;padding:4px 0;gap:7px}
+  .rank-row .measurement {font-size:17px}
+  .rank-species .rarity {font-size:10px}
+  .species-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:8px}
+  .species-caption {padding:8px}
+  .rank-no {width:18px;font-size:14px}
+  #ranking-empty {min-height:62px;flex-direction:row}
+  #empty-fish {width:42px;height:28px}
+  .directions {padding:8px 10px}
+  .seat-grid {padding-inline:10px;gap:4px}.seat-head {margin-inline:10px}
+  .berth {padding-inline:4px;gap:3px}
+}
+@media (max-width:405px){
+  .emblem {width:32px;height:30px}.emblem canvas {width:30px;height:20px}
+  .shell {padding-inline:6px}h1{font-size:25px}
+  .tools {gap:6px}.mode {padding:4px 5px}.berth .index {font-size:10px}
+}
+.broadcast .shell {max-width:680px;padding:8px}.broadcast .dashboard {display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.broadcast .harbor-panel {order:1}.broadcast .board {order:2}.broadcast .dock {order:3}
+.broadcast .log,.broadcast .simulator,.broadcast .broadcast-link,.broadcast .rules,.broadcast .atlas {display:none !important}
+.broadcast .mast {margin-bottom:8px}.broadcast .rank-row {min-height:35px;padding:4px 0}
+.broadcast .panel-head,.broadcast .strip {padding-block:6px;min-height:35px}
+.broadcast #ranking-empty {min-height:60px;flex-direction:row}
+@media (prefers-reduced-motion:reduce) {*,*::before,*::after {animation-duration:.01ms !important;transition-duration:.01ms !important}}

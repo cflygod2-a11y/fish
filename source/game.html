@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101d27">
+  <title>晚汐渔港 · 弹幕钓鱼</title>
+  <link rel="stylesheet" href="/game.css">
+  <script src="/species.js" defer></script>
+  <script src="/scene.js" defer></script>
+  <script src="/game.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="mast">
+      <div class="identity">
+        <span class="emblem"><canvas width="24" height="16" id="brand-fish" aria-hidden="true"></canvas></span>
+        <h1>晚汐渔港</h1>
+      </div>
+      <div class="tools">
+        <span class="mode" id="mode"><i></i><span>连接中</span></span>
+        <a class="broadcast-link" href="/?broadcast=1" target="_blank" rel="noopener">投屏画面 <b aria-hidden="true">↗</b></a>
+      </div>
+    </header>
+    <p class="connection" id="connection" hidden role="status">游戏连接中断，正在重新连接…</p>
+    <div class="dashboard">
+      <section class="harbor-panel panel" aria-label="钓鱼码头">
+        <div class="strip">
+          <h2>钓鱼码头</h2>
+          <span class="occupancy"><i class="activity-dot"></i><b id="total">0</b> 人垂钓</span>
+        </div>
+        <div class="scene-wrap"><canvas id="harbor" width="384" height="204" aria-label="像素海港，共有十个普通钓位和两个贵宾钓位"></canvas></div>
+        <div class="directions">
+          <div><kbd>加入</kbd><span>发送弹幕入座，自动抛竿</span></div>
+          <div class="gift-note" id="gift-note" hidden></div>
+          <div class="receipt-note" id="receipt-note" hidden aria-live="polite"></div>
+        </div>
+      </section>
+      <section class="panel board" aria-labelledby="rank-title">
+        <div class="panel-head">
+          <div class="head-label"><span class="trophy" aria-hidden="true">★</span><h2 id="rank-title">大鱼榜</h2></div>
+          <span class="subtle">个人最长 · 前五名</span>
+        </div>
+        <ol id="ranking" class="ranking"></ol>
+        <div id="ranking-empty" class="empty"><canvas id="empty-fish" width="24" height="16" aria-hidden="true"></canvas><span>首尾鱼获，等你上榜</span></div>
+      </section>
+      <details class="panel atlas" id="fish-atlas">
+        <summary><span>鱼种图鉴</span><span class="atlas-count" id="species-count"></span></summary>
+        <ul id="species-grid" class="species-grid" aria-label="全部鱼种及外形特征"></ul>
+      </details>
+      <section class="panel dock" aria-labelledby="seats-title">
+        <div class="panel-head"><h2 id="seats-title">钓位</h2><span class="subtle" id="cadence">自动垂钓</span></div>
+        <div class="seat-head"><h3>普通席</h3><span id="normal-count">0 / 10</span></div>
+        <div class="seat-grid" id="normal-seats"></div>
+        <div class="seat-head vip"><h3>VIP 尊贵席</h3><span id="vip-count">0 / 2</span><span class="waiting" id="waiting" hidden></span></div>
+        <div class="seat-grid vip-grid" id="vip-seats"></div>
+        <details class="rules" id="rod-rules"><summary>钓竿与出鱼概率</summary>
+          <table><thead><tr><th>钓竿</th><th>稀有或传说</th><th>大或巨型</th></tr></thead>
+          <tbody><tr><td>普通竿</td><td>6%</td><td>20%</td></tr><tr id="good-odds"><td>好竿</td><td>24%</td><td>48%</td></tr></tbody></table>
+          <p id="odds-note">体型按同一鱼种比较。每次起鱼分别抽取鱼种和体型，好竿仅作用于一次抛竿。</p>
+        </details>
+      </section>
+      <section class="panel log" aria-labelledby="log-title">
+        <div class="panel-head"><h2 id="log-title">刚刚上钩</h2><span class="subtle">最新鱼获</span></div>
+        <ul id="catch-list" class="catch-list"></ul>
+        <p class="empty small-empty" id="catch-empty">有人入座后，鱼获会出现在这里。</p>
+      </section>
+      <section class="panel simulator" id="simulator" hidden aria-labelledby="sim-title">
+        <div class="panel-head"><h2 id="sim-title">模拟弹幕和礼物</h2><button type="button" id="populate" data-action="populate">模拟多人入座</button></div>
+        <div class="control-row">
+          <label for="viewer">观众</label>
+          <input id="viewer" maxlength="16" value="小海盐" list="viewer-list" autocomplete="off">
+          <datalist id="viewer-list"><option value="小海盐"></option><option value="晚风"></option><option value="星屿"></option></datalist>
+          <div class="sim-actions">
+            <button type="button" data-action="join" class="join">发「加入」</button>
+            <button type="button" data-action="vip" id="sim-vip">送 VIP 席位礼物</button>
+            <button type="button" data-action="rod" id="sim-rod">送一竿好竿</button>
+            <button type="button" data-action="leave">离席</button>
+          </div>
+        </div>
+        <p id="sim-result" role="status">更换观众名字可以模拟另一位钓友。</p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
