@@ -178,9 +178,10 @@ function renderSeats(seats) {
 function renderActions(s) {
   setText('#mode span',s.demo ? '本地试玩' : '直播接入');
   setText('#cast-note','入座后发「钓鱼」下竿，等待 '+s.cast_seconds+' 秒上鱼');
-  const waiting = Number(s.waiting_vip) || 0;
-  $('#waiting').hidden = !waiting;
-  if (waiting) setText('#waiting','候补 '+waiting+' 人');
+  for (const [selector, count] of [['#normal-waiting',s.waiting_normal],['#waiting',s.waiting_vip]]) {
+    $(selector).hidden = !count;
+    if (count) setText(selector,'候补 '+count+' 人');
+  }
   const gifts = s.gifts || {}, tips = [];
   if (gifts.vip) tips.push((gifts.vip_label || '席位礼物')+'入贵宾席');
   if (gifts.rod) tips.push((gifts.rod_label || '鱼竿礼物')+' · 入座后送礼下竿');

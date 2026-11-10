@@ -61,7 +61,10 @@ class Engine:
             CREATE TABLE IF NOT EXISTS seat(
                 id INTEGER PRIMARY KEY, uid TEXT UNIQUE REFERENCES angler(uid),
                 idle_until REAL NOT NULL DEFAULT 0, last_at REAL NOT NULL DEFAULT 0,
-                cast_due_at REAL NOT NULL DEFAULT 0
+                cast_due_at REAL NOT NULL DEFAULT 0, seat_order INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS normal_queue(
+                seq INTEGER PRIMARY KEY, uid TEXT UNIQUE NOT NULL REFERENCES angler(uid)
             );
             CREATE TABLE IF NOT EXISTS vip_queue(
                 seq INTEGER PRIMARY KEY, uid TEXT UNIQUE NOT NULL REFERENCES angler(uid)
@@ -85,6 +88,9 @@ class Engine:
                 db.execute("UPDATE seat SET idle_until=? WHERE uid IS NOT NULL", (time.time() + IDLE_SECONDS,))
             if "cast_due_at" not in seat_columns:
                 db.execute("ALTER TABLE seat ADD COLUMN cast_due_at REAL NOT NULL DEFAULT 0")
+            if "seat_order" not in seat_columns:
+                db.execute("ALTER TABLE seat ADD COLUMN seat_order INTEGER NOT NULL DEFAULT 0")
+                db.execute("UPDATE seat SET seat_order=id WHERE uid IS NOT NULL")
             db.executemany("INSERT OR IGNORE INTO seat(id) VALUES(?)", [(i,) for i in range(1, TOTAL_SEATS + 1)])
 
     @contextmanager
@@ -99,27 +105,49 @@ class Engine:
                 db.execute("ROLLBACK")
                 raise
 
-    def _fill_vip(self, db, now):
-        free = db.execute("SELECT id FROM seat WHERE id>10 AND uid IS NULL ORDER BY id").fetchall()
-        waiting = db.execute("SELECT uid FROM vip_queue ORDER BY seq LIMIT ?", (len(free),)).fetchall()
-        for seat, member in zip(free, waiting):
-            uid = member["uid"]
-            previous = db.execute("SELECT cast_due_at FROM seat WHERE uid=?", (uid,)).fetchone()
-            due = previous["cast_due_at"] if previous else 0
-            db.execute("UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0 WHERE uid=?", (uid,))
-            db.execute("UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=? WHERE id=?",
-                       (uid, now + IDLE_SECONDS, due, seat["id"]))
-            db.execute("DELETE FROM vip_queue WHERE uid=?", (uid,))
+    def _release_seat(self, db, seat_id):
+        db.execute("""UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0,seat_order=0
+                      WHERE id=?""", (seat_id,))
 
-    def _expire_idle(self, db, now):
-        for first, last in ((1, NORMAL_SEATS), (NORMAL_SEATS + 1, TOTAL_SEATS)):
-            free = db.execute("SELECT 1 FROM seat WHERE id BETWEEN ? AND ? AND uid IS NULL LIMIT 1",
+    def _fill_seats(self, db, now, vip):
+        first, last = (NORMAL_SEATS + 1, TOTAL_SEATS) if vip else (1, NORMAL_SEATS)
+        queue = "vip_queue" if vip else "normal_queue"
+        waiting = db.execute(f"SELECT uid FROM {queue} ORDER BY seq LIMIT ?", (last - first + 1,)).fetchall()
+        for member in waiting:
+            seat = db.execute("SELECT id FROM seat WHERE id BETWEEN ? AND ? AND uid IS NULL ORDER BY id LIMIT 1",
                               (first, last)).fetchone()
-            if not free:
-                db.execute("""UPDATE seat SET uid=NULL, idle_until=0, last_at=0
-                              WHERE id BETWEEN ? AND ? AND cast_due_at=0 AND idle_until<=?""",
-                           (first, last, now))
-        self._fill_vip(db, now)
+            if not seat:
+                seat = db.execute("""SELECT id FROM seat WHERE id BETWEEN ? AND ?
+                                     AND cast_due_at=0 AND idle_until<=?
+                                     ORDER BY seat_order, id LIMIT 1""", (first, last, now)).fetchone()
+            if not seat:
+                break
+            uid = member["uid"]
+            previous = db.execute("SELECT id,cast_due_at FROM seat WHERE uid=?", (uid,)).fetchone()
+            due = previous["cast_due_at"] if previous else 0
+            if previous:
+                self._release_seat(db, previous["id"])
+            db.execute("""UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=?,
+                          seat_order=(SELECT max(seat_order)+1 FROM seat) WHERE id=?""",
+                       (uid, now + IDLE_SECONDS, due, seat["id"]))
+            db.execute(f"DELETE FROM {queue} WHERE uid=?", (uid,))
+            if vip:
+                db.execute("DELETE FROM normal_queue WHERE uid=?", (uid,))
+
+    def _fill_queues(self, db, now):
+        self._fill_seats(db, now, vip=True)
+        self._fill_seats(db, now, vip=False)
+
+    def _request_seat(self, db, now, uid, name, vip):
+        queue, label = ("vip_queue", "VIP") if vip else ("normal_queue", "普通席")
+        db.execute(f"INSERT OR IGNORE INTO {queue}(uid) VALUES(?)", (uid,))
+        self._fill_queues(db, now)
+        seat = db.execute("SELECT id FROM seat WHERE uid=?", (uid,)).fetchone()
+        if seat and (not vip or seat["id"] > NORMAL_SEATS):
+            return f"{name} 加入 {label} {seat['id']} 号席"
+        position = db.execute(f"SELECT count(*) FROM {queue} WHERE seq <= (SELECT seq FROM {queue} WHERE uid=?)",
+                              (uid,)).fetchone()[0]
+        return f"{label}已满，{name} 候补第 {position} 位"
 
     def _start_cast(self, db, name, seat, now):
         if seat["cast_due_at"]:
@@ -147,7 +175,7 @@ class Engine:
                            (now,)).fetchall()
         for seat in ready:
             self._land_fish(db, seat, now)
-        self._expire_idle(db, now)
+        self._fill_queues(db, now)
 
     def _handle(self, db, uid, name, action, count, now):
         db.execute("""INSERT INTO angler(uid,name) VALUES(?,?) ON CONFLICT(uid)
@@ -164,30 +192,19 @@ class Engine:
             return f"{name} 请先发送「加入」入座，再发送「钓鱼」"
         if action == "leave":
             queued = db.execute("DELETE FROM vip_queue WHERE uid=?", (uid,)).rowcount
+            queued += db.execute("DELETE FROM normal_queue WHERE uid=?", (uid,)).rowcount
             if seat:
-                db.execute("UPDATE seat SET uid=NULL,idle_until=0,last_at=0,cast_due_at=0 WHERE uid=?", (uid,))
-                self._fill_vip(db, now)
+                self._release_seat(db, seat["id"])
+                self._fill_queues(db, now)
                 return f"{name} 已离开 {seat['id']} 号席，剩余好竿保留"
             return f"{name} 已退出候补" if queued else f"{name} 当前未入席"
         if action == "join":
             if seat:
                 return f"{name} 已在 {seat['id']} 号席"
-            empty = db.execute("SELECT id FROM seat WHERE id<=10 AND uid IS NULL ORDER BY id LIMIT 1").fetchone()
-            if not empty:
-                return "10 个普通席已满，请等有空席时再发送「加入」"
-            db.execute("UPDATE seat SET uid=?,idle_until=?,last_at=0 WHERE id=?",
-                       (uid, now + IDLE_SECONDS, empty["id"]))
-            return f"{name} 加入 {empty['id']} 号席"
-        if seat and seat["id"] > 10:
+            return self._request_seat(db, now, uid, name, vip=False)
+        if seat and seat["id"] > NORMAL_SEATS:
             return f"{name} 已在 VIP {seat['id']} 号席"
-        db.execute("INSERT OR IGNORE INTO vip_queue(uid) VALUES(?)", (uid,))
-        self._fill_vip(db, now)
-        vip = db.execute("SELECT id FROM seat WHERE uid=? AND id>10", (uid,)).fetchone()
-        if vip:
-            return f"{name} 加入 VIP {vip['id']} 号席"
-        position = db.execute("SELECT count(*) FROM vip_queue WHERE seq <= (SELECT seq FROM vip_queue WHERE uid=?)",
-                              (uid,)).fetchone()[0]
-        return f"VIP 已满，{name} 候补第 {position} 位，空席时自动入座"
+        return self._request_seat(db, now, uid, name, vip=True)
 
     def event(self, event_id, uid, name, action, count=1):
         if action not in ("join", "leave", "vip", "rod", "fish"):
@@ -229,10 +246,11 @@ class Engine:
                 SELECT id,seat,name,fish,mm/10.0 AS cm,rarity,size,rod,caught_at
                 FROM catch ORDER BY id DESC LIMIT 12
             """)]
-            waiting = db.execute("SELECT count(*) FROM vip_queue").fetchone()[0]
+            waiting_vip = db.execute("SELECT count(*) FROM vip_queue").fetchone()[0]
+            waiting_normal = db.execute("SELECT count(*) FROM normal_queue").fetchone()[0]
             return {"mode": self.mode, "demo": self.mode == "demo", "server_time": time.time(),
                     "cast_seconds": self.interval, "seats": seats, "ranking": ranking,
-                    "catches": catches, "waiting_vip": waiting}
+                    "catches": catches, "waiting_vip": waiting_vip, "waiting_normal": waiting_normal}
 
     def close(self):
         with self.lock:
