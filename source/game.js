@@ -7,6 +7,10 @@ let polling = false;
 let sending = false;
 let lastPaint = -Infinity;
 let lastReceipt = '';
+let latestCatchId = 0;
+let announcementTimer = null;
+const legendaryCatches = [];
+const announcementSeconds = 5;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const signatures = new Map();
 const inFlightReceipts = new Set();
@@ -125,6 +129,29 @@ function renderCatches(entries) {
     return row;
   }));
 }
+function showLegendaryCatch() {
+  const entry = legendaryCatches.shift();
+  const banner = $('#legendary-catch');
+  banner.hidden = !entry;
+  if (!entry) {
+    announcementTimer = null;
+    return;
+  }
+  setText('#legendary-message', `${entry.name} 钓起了 ${entry.cm.toFixed(1)} 厘米长的${entry.fish}！`);
+  announcementTimer = setTimeout(showLegendaryCatch, announcementSeconds * 1000);
+}
+function announceLegendaryCatches(entries, serverTime) {
+  // Catch history arrives newest first. Queue new records in the order they were caught.
+  const newCatches = entries.filter(entry => entry.id > latestCatchId);
+  if (!newCatches.length) return;
+  for (const entry of newCatches.reverse()) {
+    if (entry.rarity === '传说' && (state || serverTime - entry.caught_at < announcementSeconds)) {
+      legendaryCatches.push(entry);
+    }
+  }
+  latestCatchId = entries[0].id;
+  if (legendaryCatches.length && announcementTimer === null) showLegendaryCatch();
+}
 function renderSeats(seats) {
   const displayData = seats.map(s => [s.id,s.name,s.vip,s.rod_ready,s.vip_waiting]);
   if (!changed('seats',displayData)) return;
@@ -212,6 +239,7 @@ async function refresh() {
     renderSeats(s.seats);
     renderRanking(s.ranking);
     renderCatches(s.catches);
+    announceLegendaryCatches(s.catches, s.server_time);
     state=s;
     renderReceipts(s,received);
     $('#connection').hidden = true;

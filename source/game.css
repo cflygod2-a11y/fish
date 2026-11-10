@@ -33,8 +33,12 @@ h2 {font-weight:680;font-size:18px;letter-spacing:.035em}
 .strip h2:before {display:inline-block;content:"";width:6px;height:12px;background:var(--sea);margin:0 9px -1px 0}
 .occupancy,.subtle,.seat-head span {font-size:12px;color:var(--soft)}
 .occupancy {gap:4px}.occupancy i {margin-right:2px}.occupancy b {color:var(--paper);font-family:Consolas,monospace}
-.scene-wrap {background:#325963}
+.scene-wrap {position:relative;background:#325963}
 #harbor {width:100%;height:auto;display:block;aspect-ratio:32/17}
+.catch-announcement {position:absolute;inset:8px 8px auto auto;max-width:min(280px,calc(100% - 16px));pointer-events:none}
+#legendary-catch {padding:6px 9px;background:#192735ee;border:1px solid #edbd71;color:#fff2d6;box-shadow:2px 2px #101d2777}
+#legendary-catch strong {display:block;color:#f9cc78;font-size:11px;letter-spacing:.08em}
+#legendary-message {margin:2px 0 0;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
 .directions {display:flex;gap:7px 17px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);min-height:41px;background:#203339;font-size:12px;color:var(--soft)}
 .directions>div {gap:7px}
 kbd {padding:2px 5px;border:1px solid #739d8f;background:#274a47;color:#cfecce;font:inherit;font-weight:600;white-space:nowrap}

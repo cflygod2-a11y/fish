@@ -29,7 +29,15 @@
           <h2>钓鱼码头</h2>
           <span class="occupancy"><i class="activity-dot"></i><b id="total">0</b> 人垂钓</span>
         </div>
-        <div class="scene-wrap"><canvas id="harbor" width="384" height="204" aria-label="像素海港，共有十个普通钓位和两个贵宾钓位"></canvas></div>
+        <div class="scene-wrap">
+          <canvas id="harbor" width="384" height="204" aria-label="像素海港，共有十个普通钓位和两个贵宾钓位"></canvas>
+          <div class="catch-announcement" role="status" aria-atomic="true">
+            <div id="legendary-catch" hidden>
+              <strong>✦ 传说鱼获</strong>
+              <p id="legendary-message"></p>
+            </div>
+          </div>
+        </div>
         <div class="directions">
           <div><kbd>加入</kbd><span>发送弹幕入座，自动抛竿</span></div>
           <div class="gift-note" id="gift-note" hidden></div>
