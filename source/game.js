@@ -262,7 +262,7 @@ function animate(now) {
   if (document.visibilityState !== 'hidden' && state && now - lastPaint >= (reduceMotion.matches ? 1000 : 50)) {
     updateSeasonClock(performance.now());
     if (typeof window.drawFishingScene === 'function') {
-      window.drawFishingScene($('#harbor'),state,now);
+      window.drawFishingScene($('#harbor'),state,now,$('#angler-labels'));
     }
     lastPaint = now;
   }

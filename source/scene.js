@@ -621,7 +621,8 @@
       rect(g,x+destination+spread,y+10-Math.sin(splash*Math.PI)*4,1,2,"#e2eade");
       g.restore();
     }
-    if(pose.sparkle>0 && (record.rarity==="稀有" || record.rarity==="传说")) {
+    const sparkling=pose.sparkle>0 && (record.rarity==="稀有" || record.rarity==="传说");
+    if(sparkling) {
       g.save();
       sparkles.forEach(([dx,dy],i)=>{
         const twinkle=(1+Math.sin(age*10+i*2.2))/2;
@@ -634,6 +635,10 @@
       });
       g.restore();
     }
+    const headTop=bodyY-16;
+    if(at<=.22) return headTop;
+    const fishTop=y+fishY-width/2*(Math.abs(Math.sin(angle))+Math.abs(Math.cos(angle)));
+    return Math.min(headTop,fishTop-(sparkling?5:0));
   }
   function updateCatchState(scene,state,time) {
     if(scene.state===state) return;
@@ -641,6 +646,12 @@
     const previousSeats=scene.seats;
     scene.state=state;
     scene.seats=new Map((state?.seats || []).map(seat=>[seat.id,seat]));
+    scene.labels.forEach((label,index)=>{
+      const name=scene.seats.get(index+1)?.name || "";
+      label.textContent=name;
+      label.title=name;
+      label.hidden=!name;
+    });
     const caught=new Map();
     for(const record of state?.catches || []) {
       const seat=scene.seats.get(record.seat);
@@ -696,12 +707,20 @@
     else {rect(g,x-4,y+1,2,1,c);rect(g,x-2,y,2,1,c);rect(g,x,y+1,1,1,c);rect(g,x+1,y,3,1,c);}
   }
 
-  window.drawFishingScene = function(canvas,state,timeMs) {
+  window.drawFishingScene = function(canvas,state,timeMs,labelLayer) {
     if(!canvas || !canvas.getContext) return;
     let scene=views.get(canvas);
     if(!scene) {
       canvas.width=W; canvas.height=H; canvas.style.imageRendering="pixelated";
-      scene={g:canvas.getContext("2d"),season:null,ripples:[],seats:new Map(),caught:new Map(),casts:new Map()};
+      const labels=labelLayer?spots.map(([x],index)=>{
+        const label=document.createElement("span");
+        label.className=index>=10?"angler-label vip":"angler-label";
+        label.style.left=x/W*100+"%";
+        label.hidden=true;
+        return label;
+      }):[];
+      if(labelLayer) labelLayer.replaceChildren(...labels);
+      scene={g:canvas.getContext("2d"),season:null,ripples:[],seats:new Map(),caught:new Map(),casts:new Map(),labels};
       const rnd=seed(92014);
       for(let i=0;i<47;i++) scene.ripples.push([Math.floor(rnd()*W),91+Math.floor(rnd()*112),1+Math.floor(rnd()*8),rnd()*6.28]);
       views.set(canvas,scene);
@@ -746,13 +765,19 @@
       chair(g,x,y,vip);
       const catchAnimation=scene.caught.get(id);
       const cast=scene.casts.get(castKey(seat));
+      let labelY=y-(idx<6?25:21);
       if(catchAnimation && window.FishSprites && elapsed-catchAnimation.start<catchAnimation.duration) {
         const age=motionPreference?.matches?catchTiming(0,catchAnimation.duration).displayAge:elapsed-catchAnimation.start;
-        celebrateCatch(g,x,y,idx,catchAnimation.record,age,catchAnimation.duration,seat);
+        labelY=Math.min(labelY,celebrateCatch(g,x,y,idx,catchAnimation.record,age,catchAnimation.duration,seat)-3);
       } else if(seat.name && cast && elapsed>=cast.start && elapsed-cast.start<cast.duration && !motionPreference?.matches) {
         castingAngler(g,x,y,idx,seat,elapsed-cast.start,cast.duration);
       } else if(seat.name) {
         angler(g,x,y,idx,seat,t);
+      }
+      const label=scene.labels[idx];
+      if(label && !label.hidden) {
+        const top=labelY/H*100+"%";
+        if(label.style.top!==top) label.style.top=top;
       }
       numberPlate(g,x,y,id,vip,Boolean(seat.name));
     });

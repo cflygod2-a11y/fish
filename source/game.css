@@ -45,6 +45,12 @@ h2 {font-weight:680;font-size:18px;letter-spacing:.035em}
 #season-clock {font:600 12px Consolas,monospace;color:var(--paper)}
 .scene-wrap {position:relative;background:#325963}
 #harbor {width:100%;height:auto;display:block;aspect-ratio:32/17}
+.angler-labels {position:absolute;inset:0;pointer-events:none}
+.angler-label {position:absolute;transform:translate(-50%,-100%);max-width:10.4%;padding:1px;pointer-events:auto;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a8fff1;
+  text-shadow:-1px 0 #18303a,1px 0 #18303a,0 -1px #18303a,0 1px #18303a,0 2px 2px #11222b;
+  font-size:clamp(7.5px,.95vw,11px);font-weight:700;line-height:1.15}
+.angler-label.vip {color:#ffe07d}
 .catch-announcement {position:absolute;inset:8px 8px auto auto;max-width:min(280px,calc(100% - 16px));pointer-events:none}
 #legendary-catch {padding:6px 9px;background:#192735ee;border:1px solid #edbd71;color:#fff2d6;box-shadow:2px 2px #101d2777}
 #legendary-catch strong {display:block;color:#f9cc78;font-size:11px;letter-spacing:.08em}
