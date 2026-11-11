@@ -157,7 +157,7 @@ function announceLegendaryCatches(entries, serverTime) {
   if (legendaryCatches.length && announcementTimer === null) showLegendaryCatch();
 }
 function renderSeats(seats) {
-  const displayData = seats.map(s => [s.id,s.name,s.vip,s.rod_ready,s.vip_waiting,s.queued_casts]);
+  const displayData = seats.map(s => [s.id,s.name,s.vip,s.rod_ready,s.vip_waiting,s.queued_casts,s.free_casts_left]);
   if (!changed('seats',displayData)) return;
   const occupied = seats.filter(s => s.name);
   setText('#total',occupied.length);
@@ -169,6 +169,7 @@ function renderSeats(seats) {
       const number = String(s.id).padStart(2,'0');
       const name = s.name || '空席';
       tile.title = number+'号 · '+name+(s.rod_ready?' · 好竿 '+s.rod_ready+' 次':'');
+      if (s.name) tile.title += ' · 今日免费剩余 '+s.free_casts_left+' 次';
       tile.append(node('span','index',number), node('span','seat-name',name));
       if (s.rod_ready > 0) {
         const charges = node('span','rod-count','✦'+s.rod_ready);
@@ -240,7 +241,7 @@ function renderActions(s) {
   }
   setText('#mode span',mode);
   const castTime = s.cast_seconds ?? s.cast_seconds_range.join('–');
-  setText('#cast-note','入座后发「钓鱼」下竿，等待 '+castTime+' 秒上鱼');
+  setText('#cast-note','入座后发「钓鱼」，每天免费 '+s.daily_free_casts+' 次，等待 '+castTime+' 秒上鱼');
   for (const [selector, count] of [['#normal-waiting',s.waiting_normal],['#waiting',s.waiting_vip]]) {
     $(selector).hidden = !count;
     if (count) setText(selector,'候补 '+count+' 人');
@@ -248,7 +249,7 @@ function renderActions(s) {
   const gifts = s.gifts || {}, tips = [];
   renderSeasonGifts(gifts.seasons, s.demo);
   if (gifts.vip) tips.push((gifts.vip_label || '席位礼物')+'入贵宾席');
-  if (gifts.rod) tips.push((gifts.rod_label || '鱼竿礼物')+' · 入座后送礼下竿');
+  if (gifts.rod) tips.push((gifts.rod_label || '鱼竿礼物')+' · 每件增加一次钓鱼机会');
   $('#gift-note').hidden = !tips.length;
   setText('#gift-note',tips.join(' · '));
   $('#good-odds').hidden = !gifts.rod;

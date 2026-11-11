@@ -6,6 +6,7 @@ import threading
 import time
 import unicodedata
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 
 
 # Fish lengths are integer millimetres, shown to players in 0.1 cm steps.
@@ -21,6 +22,8 @@ RARITY_THRESHOLDS = ((72, 94, 99), (42, 76, 96))
 SIZE_THRESHOLDS = ((80, 97), (52, 88))
 IDLE_SECONDS = 60
 CAST_SECONDS_RANGE = (5, 20)
+DAILY_FREE_CASTS = 10
+BEIJING_TIME = timezone(timedelta(hours=8))
 NORMAL_SEATS = 10
 TOTAL_SEATS = 12
 SEASON_SECONDS = 10 * 60
@@ -44,6 +47,10 @@ def _name(value):
     return value.strip()[:24] or "钓友"
 
 
+def _quota_day(now):
+    return datetime.fromtimestamp(now, BEIJING_TIME).date().isoformat()
+
+
 class Engine:
     def __init__(self, path, mode, interval=None):
         self.mode = mode
@@ -60,13 +67,14 @@ class Engine:
             CREATE TABLE IF NOT EXISTS session_info(mode TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS angler(
                 uid TEXT PRIMARY KEY, name TEXT NOT NULL, rods INTEGER NOT NULL DEFAULT 0,
-                best INTEGER REFERENCES catch(id)
+                best INTEGER REFERENCES catch(id), free_cast_day TEXT NOT NULL DEFAULT '',
+                free_cast_used INTEGER NOT NULL DEFAULT 0, gift_casts INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS seat(
                 id INTEGER PRIMARY KEY, uid TEXT UNIQUE REFERENCES angler(uid),
                 idle_until REAL NOT NULL DEFAULT 0, last_at REAL NOT NULL DEFAULT 0,
                 cast_due_at REAL NOT NULL DEFAULT 0, seat_order INTEGER NOT NULL DEFAULT 0,
-                queued_casts INTEGER NOT NULL DEFAULT 0
+                queued_casts INTEGER NOT NULL DEFAULT 0, cast_from_gift INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS normal_queue(
                 seq INTEGER PRIMARY KEY, uid TEXT UNIQUE NOT NULL REFERENCES angler(uid)
@@ -102,6 +110,14 @@ class Engine:
                 db.execute("UPDATE seat SET seat_order=id WHERE uid IS NOT NULL")
             if "queued_casts" not in seat_columns:
                 db.execute("ALTER TABLE seat ADD COLUMN queued_casts INTEGER NOT NULL DEFAULT 0")
+            if "cast_from_gift" not in seat_columns:
+                db.execute("ALTER TABLE seat ADD COLUMN cast_from_gift INTEGER NOT NULL DEFAULT 0")
+            angler_columns = {column["name"] for column in db.execute("PRAGMA table_info(angler)")}
+            for column, definition in (("free_cast_day", "TEXT NOT NULL DEFAULT ''"),
+                                       ("free_cast_used", "INTEGER NOT NULL DEFAULT 0"),
+                                       ("gift_casts", "INTEGER NOT NULL DEFAULT 0")):
+                if column not in angler_columns:
+                    db.execute(f"ALTER TABLE angler ADD COLUMN {column} {definition}")
             db.executemany("INSERT OR IGNORE INTO seat(id) VALUES(?)", [(i,) for i in range(1, TOTAL_SEATS + 1)])
 
     @contextmanager
@@ -117,7 +133,8 @@ class Engine:
                 raise
 
     def _release_seat(self, db, seat_id):
-        db.execute("""UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0,seat_order=0,queued_casts=0
+        db.execute("""UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0,
+                      seat_order=0,queued_casts=0,cast_from_gift=0
                       WHERE id=?""", (seat_id,))
 
     def _fill_seats(self, db, now, vip):
@@ -134,14 +151,16 @@ class Engine:
             if not seat:
                 break
             uid = member["uid"]
-            previous = db.execute("SELECT id,cast_due_at,queued_casts FROM seat WHERE uid=?", (uid,)).fetchone()
+            previous = db.execute("SELECT id,cast_due_at,queued_casts,cast_from_gift FROM seat WHERE uid=?",
+                                  (uid,)).fetchone()
             due = previous["cast_due_at"] if previous else 0
             queued = previous["queued_casts"] if previous else 0
+            from_gift = previous["cast_from_gift"] if previous else 0
             if previous:
                 self._release_seat(db, previous["id"])
-            db.execute("""UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=?,queued_casts=?,
+            db.execute("""UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=?,queued_casts=?,cast_from_gift=?,
                           seat_order=(SELECT max(seat_order)+1 FROM seat) WHERE id=?""",
-                       (uid, now + IDLE_SECONDS, due, queued, seat["id"]))
+                       (uid, now + IDLE_SECONDS, due, queued, from_gift, seat["id"]))
             db.execute(f"DELETE FROM {queue} WHERE uid=?", (uid,))
             if vip:
                 db.execute("DELETE FROM normal_queue WHERE uid=?", (uid,))
@@ -164,12 +183,33 @@ class Engine:
     def _cast_delay(self):
         return self.rng.randint(*CAST_SECONDS_RANGE) if self.interval is None else self.interval
 
-    def _start_cast(self, db, name, seat, now):
-        if seat["cast_due_at"]:
-            return f"{name} 已下竿，正在等鱼上钩"
+    def _start_cast(self, db, name, seat, now, from_gift=False):
         delay = self._cast_delay()
-        db.execute("UPDATE seat SET cast_due_at=? WHERE id=?", (now + delay, seat["id"]))
+        db.execute("UPDATE seat SET cast_due_at=?,cast_from_gift=? WHERE id=?",
+                   (now + delay, from_gift, seat["id"]))
         return f"{name} 已下竿，等待 {delay:g} 秒上鱼"
+
+    def _request_cast(self, db, uid, name, seat, now):
+        if not seat:
+            return f"{name} 请先发送「加入」入座，再发送「钓鱼」"
+        today = _quota_day(now)
+        allowance = db.execute("""SELECT CASE WHEN free_cast_day=? THEN free_cast_used ELSE 0 END AS used,
+                                  gift_casts FROM angler WHERE uid=?""", (today, uid)).fetchone()
+        if allowance["used"] >= DAILY_FREE_CASTS:
+            if allowance["gift_casts"] and not seat["cast_due_at"]:
+                return self._start_cast(db, name, seat, now, from_gift=True) + "（使用礼物机会）"
+            if allowance["gift_casts"]:
+                return f"{name} 的礼物机会会自动结算，请等待当前竿次结束"
+            return f"{name} 今日 {DAILY_FREE_CASTS} 次免费机会已用完，可送指定鱼竿礼物继续钓鱼"
+        used = allowance["used"] + 1
+        db.execute("UPDATE angler SET free_cast_day=?,free_cast_used=? WHERE uid=?", (today, used, uid))
+        if seat["cast_due_at"]:
+            queued = seat["queued_casts"] + 1
+            db.execute("UPDATE seat SET queued_casts=? WHERE id=?", (queued, seat["id"]))
+            result = f"{name} 的钓鱼指令已排队"
+        else:
+            result = self._start_cast(db, name, seat, now)
+        return f"{result} · 今日免费剩余 {DAILY_FREE_CASTS - used} 次"
 
     def _land_fish(self, db, seat, now):
         uid = seat["uid"]
@@ -179,16 +219,19 @@ class Engine:
         caught = db.execute("""INSERT INTO catch(uid,seat,name,fish,mm,rarity,size,rod,caught_at)
                                VALUES(?,?,?,?,?,?,?,?,?)""",
                             (uid, seat["id"], seat["name"], fish, mm, rarity, size, rod, now)).lastrowid
-        db.execute("""UPDATE angler SET rods=rods-?, best=CASE
+        used_gift = seat["cast_from_gift"]
+        db.execute("""UPDATE angler SET rods=rods-?, gift_casts=gift_casts-?, best=CASE
                       WHEN best IS NULL OR ?>(SELECT mm FROM catch WHERE id=best) THEN ?
-                      ELSE best END WHERE uid=?""", (int(upgraded), mm, caught, uid))
+                      ELSE best END WHERE uid=?""", (int(upgraded), used_gift, mm, caught, uid))
         queued = seat["queued_casts"]
-        next_due = now + self._cast_delay() if queued else 0
-        db.execute("UPDATE seat SET last_at=?,idle_until=?,cast_due_at=?,queued_casts=? WHERE id=?",
-                   (now, now + IDLE_SECONDS, next_due, max(0, queued - 1), seat["id"]))
+        next_from_gift = not queued and seat["gift_casts"] > used_gift
+        next_due = now + self._cast_delay() if queued or next_from_gift else 0
+        db.execute("""UPDATE seat SET last_at=?,idle_until=?,cast_due_at=?,queued_casts=?,cast_from_gift=?
+                      WHERE id=?""",
+                   (now, now + IDLE_SECONDS, next_due, max(0, queued - 1), next_from_gift, seat["id"]))
 
     def _advance(self, db, now):
-        ready = db.execute("""SELECT s.id, s.queued_casts, a.uid, a.name, a.rods
+        ready = db.execute("""SELECT s.id, s.queued_casts, s.cast_from_gift, a.uid, a.name, a.rods, a.gift_casts
                               FROM seat s JOIN angler a ON a.uid=s.uid
                               WHERE s.cast_due_at>0 AND s.cast_due_at<=? ORDER BY s.cast_due_at, s.id""",
                            (now,)).fetchall()
@@ -205,25 +248,21 @@ class Engine:
                       DO UPDATE SET name=excluded.name""", (uid, name))
         seat = db.execute("SELECT id,cast_due_at,queued_casts FROM seat WHERE uid=?", (uid,)).fetchone()
         if action == "rod":
-            db.execute("UPDATE angler SET rods=rods+? WHERE uid=?", (count, uid))
+            db.execute("UPDATE angler SET rods=rods+?,gift_casts=gift_casts+? WHERE uid=?", (count, count, uid))
+            if seat and not seat["cast_due_at"]:
+                return self._start_cast(db, name, seat, now, from_gift=True) + f" · 获得 {count} 次礼物机会"
             if seat:
-                return self._start_cast(db, name, seat, now)
-            return f"{name} 获得 {count} 次好竿，入座后优先使用"
+                return f"{name} 获得 {count} 次礼物机会，已加入待下竿队列"
+            return f"{name} 获得 {count} 次礼物机会和好竿，入座后可使用"
         if action == "fish":
-            if seat:
-                if seat["cast_due_at"]:
-                    queued = seat["queued_casts"] + 1
-                    db.execute("UPDATE seat SET queued_casts=? WHERE id=?", (queued, seat["id"]))
-                    return f"{name} 的钓鱼指令已排队，待下竿 {queued} 次"
-                return self._start_cast(db, name, seat, now)
-            return f"{name} 请先发送「加入」入座，再发送「钓鱼」"
+            return self._request_cast(db, uid, name, seat, now)
         if action == "leave":
             queued = db.execute("DELETE FROM vip_queue WHERE uid=?", (uid,)).rowcount
             queued += db.execute("DELETE FROM normal_queue WHERE uid=?", (uid,)).rowcount
             if seat:
                 self._release_seat(db, seat["id"])
                 self._fill_queues(db, now)
-                return f"{name} 已离开 {seat['id']} 号席，剩余好竿保留"
+                return f"{name} 已离开 {seat['id']} 号席，剩余好竿和未结算的礼物机会保留"
             return f"{name} 已退出候补" if queued else f"{name} 当前未入席"
         if action == "join":
             if seat:
@@ -265,12 +304,16 @@ class Engine:
 
     def state(self):
         with self._transaction(read=True) as db:
+            now = time.time()
             seats = [dict(r) for r in db.execute("""
                 SELECT s.id,s.id>10 AS vip,a.name,coalesce(a.rods,0) AS rod_ready,
-                    s.last_at AS last_catch_at,s.queued_casts,
+                    s.last_at AS last_catch_at,
+                    s.queued_casts + CASE WHEN s.cast_due_at>0 THEN coalesce(a.gift_casts,0)-s.cast_from_gift ELSE 0 END
+                        AS queued_casts,
+                    ? - CASE WHEN a.free_cast_day=? THEN a.free_cast_used ELSE 0 END AS free_casts_left,
                     EXISTS(SELECT 1 FROM vip_queue q WHERE q.uid=s.uid) AS vip_waiting
                 FROM seat s LEFT JOIN angler a ON a.uid=s.uid ORDER BY s.id
-            """)]
+            """, (DAILY_FREE_CASTS, _quota_day(now)))]
             for seat in seats:
                 seat["vip"] = bool(seat["vip"])
                 seat["vip_waiting"] = bool(seat["vip_waiting"])
@@ -284,9 +327,9 @@ class Engine:
             """)]
             waiting_vip = db.execute("SELECT count(*) FROM vip_queue").fetchone()[0]
             waiting_normal = db.execute("SELECT count(*) FROM normal_queue").fetchone()[0]
-            now = time.time()
             return {"mode": self.mode, "demo": self.mode == "demo", "server_time": now,
                     "season": self._season(db, now),
+                    "daily_free_casts": DAILY_FREE_CASTS,
                     "cast_seconds": self.interval, "cast_seconds_range": CAST_SECONDS_RANGE,
                     "seats": seats, "ranking": ranking,
                     "catches": catches, "waiting_vip": waiting_vip, "waiting_normal": waiting_normal}
