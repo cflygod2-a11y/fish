@@ -2,6 +2,7 @@
 /_internal/
 /build/
 /dist/
+/.idea/
 
 # 本地存档（包括自定义存档目录下的数据库）
 saves/
