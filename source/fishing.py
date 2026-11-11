@@ -16,12 +16,13 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from douyin import CallbackError, clean_name, read_events, subscribe
-from engine import CAST_SECONDS_RANGE, Engine
+from engine import CAST_SECONDS_RANGE, SEASON_ACTIONS, SEASONS, Engine
 from receipts import Receipts
 
 ASSETS = Path(__file__).resolve().parent
 HOME_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else ASSETS
 DEMO_PLAYERS = ("小满", "阿潮", "星野", "橘猫", "白露", "海盐", "半夏", "小渔", "椰青", "薄荷", "晚风", "阿渡")
+DEMO_SEASON_GIFTS = {"spring": "春樱", "summer": "流萤", "autumn": "枫叶", "winter": "雪花"}
 FILES = {"/": ("game.html", "text/html"), "/scene.js": ("scene.js", "application/javascript"),
          "/species.js": ("species.js", "application/javascript"),
          "/game.js": ("game.js", "application/javascript"), "/game.css": ("game.css", "text/css")}
@@ -63,6 +64,35 @@ def demo_event(game, name, action):
     return game.event(uuid.uuid4().hex, uid, name, action)
 
 
+def gift_configuration(live, platform="douyin"):
+    """Bind each platform gift to a single action; expose only labels and availability to clients."""
+    actions = {}
+    bilibili = live and platform == "bilibili"
+    gift_prefix = "BILIBILI" if bilibili else "FISH"
+    id_field = "gift_id" if bilibili else "sec_gift_id"
+
+    def configure(action, prefix, default_label):
+        gift_id = os.getenv(prefix + "_ID", "").strip() if live else ""
+        if gift_id:
+            if bilibili and not (gift_id.isascii() and gift_id.isdecimal() and gift_id[0] != "0"):
+                raise ValueError(f"{prefix}_ID 必须是正整数 gift_id")
+            if gift_id in actions:
+                raise ValueError(f"{prefix}_ID 的 {id_field} 已绑定到 {actions[gift_id]}，每种礼物须单独配置")
+            actions[gift_id] = action
+        label = os.getenv(prefix + "_NAME", "").strip() or default_label
+        return {"enabled": not live or bool(gift_id), "label": label}
+
+    vip = configure("vip", gift_prefix + "_VIP_GIFT", "席位礼物")
+    rod = configure("rod", gift_prefix + "_ROD_GIFT", "鱼竿礼物")
+    seasons = {
+        key: configure("season_" + key, f"{gift_prefix}_{key.upper()}_GIFT",
+                       name + "礼物" if live else DEMO_SEASON_GIFTS[key])
+        for key, name in SEASONS.items()
+    }
+    return actions, {"vip": vip["enabled"], "vip_label": vip["label"],
+                     "rod": rod["enabled"], "rod_label": rod["label"], "seasons": seasons}
+
+
 def main():
     parser = argparse.ArgumentParser(description="晚汐渔港 · 弹幕钓鱼")
     parser.add_argument("--live", action="store_true", help="连接已获授权的真实直播间")
@@ -91,15 +121,10 @@ def main():
     secret = os.getenv("DOUYIN_PUSH_SECRET", "").strip()
     if douyin_live and not (room_id and appid):
         parser.error("抖音直播需要设置 DOUYIN_ROOM_ID 和 DOUYIN_APP_ID")
-    gift_prefix = "BILIBILI" if bilibili_live else "FISH"
-    vip_id = os.getenv(gift_prefix + "_VIP_GIFT_ID", "").strip() if args.live else ""
-    rod_id = os.getenv(gift_prefix + "_ROD_GIFT_ID", "").strip() if args.live else ""
-    if bilibili_live and any(value and not (value.isascii() and value.isdecimal() and value[0] != "0")
-                             for value in (vip_id, rod_id)):
-        parser.error("B站礼物 ID 必须是正整数 gift_id")
-    if vip_id and vip_id == rod_id:
-        parser.error("两种礼物必须使用不同的 ID")
-    gift_actions = {key: value for key, value in [(vip_id, "vip"), (rod_id, "rod")] if key}
+    try:
+        gift_actions, gifts = gift_configuration(args.live, args.platform)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.stop_push:
         subscribe(room_id, bool(gift_actions), stopping=True)
         return
@@ -132,11 +157,7 @@ def main():
               for path, (filename, typ) in FILES.items() if (ASSETS / filename).is_file()}
     if "/" not in assets or "/scene.js" not in assets:
         raise FileNotFoundError("缺少画面文件，请使用完整发行包或源码目录")
-    gifts = {
-        "vip": not args.live or bool(vip_id), "rod": not args.live or bool(rod_id),
-        "vip_label": os.getenv(gift_prefix + "_VIP_GIFT_NAME", "") or "席位礼物",
-        "rod_label": os.getenv(gift_prefix + "_ROD_GIFT_NAME", "") or "鱼竿礼物",
-    }
+    demo_actions = ("join", "leave", "vip", "rod", "fish", *SEASON_ACTIONS)
     done = threading.Event()
     interaction_route = "/douyin" if douyin_live else "/simulate" if not args.live else None
 
@@ -220,7 +241,7 @@ def main():
                     demo_event(game, name, "join" if index < 10 else "vip")
                 return self.send(200, {"message": "已安排体验钓手入座，空位优先，已有钓手保留。"})
             name = clean_name(req.get("name"))
-            if not name or action not in ("join", "leave", "vip", "rod", "fish"):
+            if not name or action not in demo_actions:
                 return self.send(400, {"message": "请填写钓手名，并选择有效操作。"})
             return self.send(200, {"message": demo_event(game, name, action)})
 

@@ -15,6 +15,10 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const signatures = new Map();
 const inFlightReceipts = new Set();
 const rarities = ['常见', '少见', '稀有', '传说'];
+const seasonKeys = ['spring', 'summer', 'autumn', 'winter'];
+const seasonShortNames = ['春', '夏', '秋', '冬'];
+let nextSeasonTime = null;
+let displayedSeconds = -1;
 const fishShape = [
   '        22     ', '       21122   ', '     21111112  ', '22  2113111112 ',
   '11221111111412 ', '211111113111112', ' 1211333333332 ', '2  2233333332  ',
@@ -181,6 +185,54 @@ function renderSeats(seats) {
     }));
   }
 }
+function updateSeasonClock(now) {
+  if (nextSeasonTime === null) return;
+  const seconds = Math.max(0, Math.ceil((nextSeasonTime - now) / 1000));
+  if (seconds === displayedSeconds) return;
+  displayedSeconds = seconds;
+  const part = n => String(n).padStart(2, '0');
+  setText('#season-clock', part(Math.floor(seconds / 60)) + ':' + part(seconds % 60));
+}
+function renderSeason(s, now) {
+  const season = s.season;
+  const index = seasonKeys.indexOf(season?.key);
+  const status = $('#season-status');
+  status.hidden = index < 0 || !Number.isFinite(season.nextChangeAt) || !Number.isFinite(s.server_time);
+  if (status.hidden) {
+    nextSeasonTime = null;
+    return;
+  }
+  nextSeasonTime = now + (season.nextChangeAt - s.server_time) * 1000;
+  status.dataset.season = season.key;
+  setText('#season-name', season.name);
+  setText('#season-next', '后入' + seasonShortNames[(index + 1) % seasonKeys.length]);
+  updateSeasonClock(now);
+}
+function renderSeasonGifts(gifts, demo) {
+  if (!changed('season-gifts', [gifts, demo])) return;
+  const guide = [], buttons = [];
+  seasonKeys.forEach((key, index) => {
+    const gift = gifts?.[key];
+    if (!gift?.enabled) return;
+    const season = seasonShortNames[index];
+    const item = node('li');
+    item.dataset.season = key;
+    item.append(document.createTextNode(gift.label + ' → '), node('b', '', season));
+    guide.push(item);
+    if (demo && !broadcast) {
+      const button = node('button', '', '送' + gift.label + ' · ' + season);
+      button.type = 'button';
+      button.dataset.season = key;
+      button.dataset.action = 'season_' + key;
+      button.disabled = sending;
+      buttons.push(button);
+    }
+  });
+  $('#season-gifts').replaceChildren(...guide);
+  $('#season-guide').hidden = !guide.length;
+  $('#season-buttons').replaceChildren(...buttons);
+  $('#season-controls').hidden = !buttons.length;
+}
 function renderActions(s) {
   let mode = s.demo ? '本地试玩' : '抖音直播';
   if (s.platform === 'bilibili') {
@@ -194,6 +246,7 @@ function renderActions(s) {
     if (count) setText(selector,'候补 '+count+' 人');
   }
   const gifts = s.gifts || {}, tips = [];
+  renderSeasonGifts(gifts.seasons, s.demo);
   if (gifts.vip) tips.push((gifts.vip_label || '席位礼物')+'入贵宾席');
   if (gifts.rod) tips.push((gifts.rod_label || '鱼竿礼物')+' · 入座后送礼下竿');
   $('#gift-note').hidden = !tips.length;
@@ -206,6 +259,7 @@ function renderActions(s) {
 }
 function animate(now) {
   if (document.visibilityState !== 'hidden' && state && now - lastPaint >= (reduceMotion.matches ? 1000 : 95)) {
+    updateSeasonClock(performance.now());
     if (typeof window.drawFishingScene === 'function') {
       window.drawFishingScene($('#harbor'),state,now);
     }
@@ -247,6 +301,7 @@ async function refresh() {
     if (!resp.ok) throw Error();
     const s = await resp.json();
     const received = Date.now();
+    renderSeason(s, performance.now());
     renderActions(s);
     renderSeats(s.seats);
     renderRanking(s.ranking);
@@ -282,10 +337,13 @@ async function simulate(action) {
     setText('#sim-result','连接失败，请检查游戏服务后重试。');
   } finally {
     sending=false;
-    buttons.forEach(b=>b.disabled=false);
+    document.querySelectorAll('[data-action]').forEach(b=>b.disabled=false);
   }
 }
-document.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>simulate(b.dataset.action)));
+$('#simulator').addEventListener('click', e => {
+  const button = e.target.closest('button[data-action]');
+  if (button) simulate(button.dataset.action);
+});
 $('#viewer').addEventListener('keydown',e=>{if (e.key==='Enter') simulate('join');});
 refresh();
 setInterval(refresh,1000);

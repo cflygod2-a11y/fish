@@ -26,7 +26,13 @@
     <div class="dashboard">
       <section class="harbor-panel panel" aria-label="钓鱼码头">
         <div class="strip">
-          <h2>钓鱼码头</h2>
+          <div class="harbor-heading">
+            <h2>钓鱼码头</h2>
+            <div class="season-status" id="season-status" hidden>
+              <strong id="season-name" aria-live="polite"></strong>
+              <span class="season-forecast"><span id="season-clock" role="timer"></span> <span id="season-next"></span></span>
+            </div>
+          </div>
           <span class="occupancy"><i class="activity-dot"></i><b id="total">0</b> 人垂钓</span>
         </div>
         <div class="scene-wrap">
@@ -41,6 +47,9 @@
         <div class="directions">
           <div><kbd>加入</kbd><span id="cast-note">入座后发「钓鱼」下竿</span></div>
           <div class="gift-note" id="gift-note" hidden></div>
+          <div class="season-guide" id="season-guide" hidden>
+            <span>礼物换季</span><ul id="season-gifts"></ul>
+          </div>
           <div class="receipt-note" id="receipt-note" hidden aria-live="polite"></div>
         </div>
       </section>
@@ -86,6 +95,10 @@
             <button type="button" data-action="rod" id="sim-rod">送一竿好竿</button>
             <button type="button" data-action="leave">离席</button>
           </div>
+        </div>
+        <div class="control-row season-controls" id="season-controls" hidden role="group" aria-label="模拟换季礼物">
+          <span>换季礼物</span>
+          <div class="sim-actions" id="season-buttons"></div>
         </div>
         <p id="sim-result" role="status">更换观众名字可以模拟另一位钓友。</p>
       </section>

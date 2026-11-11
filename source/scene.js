@@ -18,6 +18,37 @@
   const coats = ["#e18969", "#81b9ab", "#f6bc68", "#97a4cb", "#a4af76", "#d28a98"];
   const catchDuration = 3.2;
   const sparkles = [[-1,-.3], [1,-.35], [-.55,-.95], [1,.25], [-1,.3]];
+  const motionPreference=window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  const seasons={
+    spring:{
+      sky:["#91b4ca","#a6c5d2","#b9d3d4","#d2ded8","#eee2cd","#f6e2c8"],
+      cloud:["#e6d4d5","#fff0e3","#cbbfca"], sun:["#f5d5b6","#fff0cd"],
+      hills:["#a0b6b2","#849e9b","#627f7f","#698b86"],
+      sea:["#b8d0bc","#9ec4b1","#86b6a6","#70a99d","#5a9993","#49888a","#3b777e"],
+      reflection:"#ffe9be", leaf:["#af798c","#dd98a9","#f6bac6","#ffdee1"], ripple:"#c4ded1"
+    },
+    summer:{
+      sky:["#384166","#444e73","#556086","#6d7796","#9398a5","#bab4b2"],
+      cloud:["#6b7091","#9594ac","#5c6587"], sun:["#a3a3b0","#fff0c3"],
+      hills:["#7d849b","#646f8b","#475f74","#4e6678"],
+      sea:["#8c9ea8","#748f9d","#628391","#507786","#416777","#345b6d","#294e60"],
+      reflection:"#c5d7d6", leaf:["#385a58","#507565","#69927b","#89ae87"], ripple:"#8baeb2"
+    },
+    autumn:{
+      sky:["#9992ac","#b19ab0","#d1a3a8","#e7afa0","#f1bb94","#f8cc99"],
+      cloud:["#deb1af","#fed2b8","#c49da7"], sun:["#f4b584","#ffdaa5"],
+      hills:["#b19a9f","#938b96","#7b777c","#837b7d"],
+      sea:["#b4b8a5","#a1b1a0","#89a59a","#759c91","#638d88","#567e7d","#456f76"],
+      reflection:"#ffdb95", leaf:["#a4574d","#c2714a","#df934f","#f4b75f"], ripple:"#c7c3a4"
+    },
+    winter:{
+      sky:["#758eaf","#8fa6bf","#a4b8cc","#beccd8","#d0d9e0","#e0e5e6"],
+      cloud:["#c6d1e2","#e9edf4","#aabbd1"], sun:["#d3dce6","#f2f0e4"],
+      hills:["#a5b6c6","#8b9fb2","#6b8298","#7890a5"],
+      sea:["#bccdd4","#a5bec9","#8eaaba","#7899ab","#62879c","#52798d","#446a80"],
+      reflection:"#ebf1ed", leaf:["#6b7889","#8b9cad","#c4d6dd","#e9efed"], ripple:"#c2d8df"
+    }
+  };
 
   function seed(value) {
     let n = value >>> 0;
@@ -129,46 +160,93 @@
     pine(g,346,76,13,"#46675f","#728776");
     for(const [x,y,w] of [[274,85,15],[299,87,15],[325,89,17],[350,87,14]]) rect(g,x,y,w,1,"#bed1ad");
   }
-  function background() {
-    const board=layer(), g=board.getContext("2d"), rnd=seed(842037);
-    const sky=[[0,12,"#9292ac"],[12,12,"#ac9ab0"],[24,13,"#cca4ac"],[37,13,"#e3afaa"],
-      [50,12,"#efbca0"],[62,18,"#f7c99f"]];
-    sky.forEach(([y,h,c])=>rect(g,0,y,W,h,c));
-    for(const [y,base] of [[11,"#a69ab0"],[23,"#bd9dae"],[36,"#d9aaa9"],[49,"#edb6a3"]]) {
-      for(let j=0;j<21;j++) rect(g,rnd()*W,y+rnd()*4,2+rnd()*17,1,base);
+  // A near branch frames the water. Smaller trees repeat its colour on the far shore.
+  function branch(g,key,colors) {
+    const twig=key==="winter"?"#667385":"#755e63";
+    poly(g,[[0,2],[11,8],[24,11],[34,12],[46,8],[57,8],[45,11],[34,14],[23,14],[10,12],[0,9]],twig);
+    for(const [x,y,bx,by] of [[10,10,15,20],[13,17,22,22],[24,12,28,6],[34,13,45,20],[44,9,52,5],[51,9,62,12],[6,10,2,18]]) {
+      line(g,x,y,bx,by,twig);
     }
-    ellipse(g,205,44,20,20,"#f4ba94");ellipse(g,205,44,17,17,"#ffdaa5");
-    rect(g,186,51,39,1,"#f8c39b");
-    cloud(g,-15,11,1,"#c3a5b6","#ddbac1","#b39aae");
-    cloud(g,69,22,.82,"#e6bbc0","#fbd1c1","#cea6b0");
-    cloud(g,252,7,1.11,"#cfacb8","#e6c0c1","#bf9cac");
-    cloud(g,336,33,.65,"#ebc0b5","#f8cfbb","#d5a9ab");
-    rect(g,143,43,41,1,"#eab7ad");rect(g,159,45,21,1,"#f2c1ac");
-    rect(g,202,2,17,1,"#b2a0b3");rect(g,218,3,8,1,"#b8a2b3");
+    if(key==="winter"){
+      line(g,0,2,12,8,colors[3]);line(g,12,8,23,11,colors[2]);
+      line(g,32,12,45,8,colors[3]);rect(g,47,7,7,1,colors[2]);return;
+    }
+    const leaves=[[3,6],[7,9],[4,17],[15,19],[21,21],[22,10],[29,5],[32,12],[41,18],[46,20],[50,7],[54,5],[58,10],[63,12]];
+    for(const [i,[x,y]] of leaves.entries()){
+      if(key==="spring"){
+        rect(g,x-2,y-1,5,3,colors[1]);rect(g,x-1,y-2,3,5,colors[2]);
+        rect(g,x-1,y-2,2,1,colors[3]);rect(g,x+1,y,1,1,"#fff0bc");
+      }else if(key==="summer"){
+        poly(g,[[x-2,y],[x+4,y-1],[x+2,y+3],[x-1,y+5]],colors[i%2]);
+        line(g,x-1,y+2,x+2,y,colors[2]);
+      }else{
+        poly(g,[[x-3,y-2],[x,y-1],[x+2,y-4],[x+3,y-1],[x+6,y-2],[x+4,y+1],[x+2,y+3],[x-1,y+2]],colors[1+i%3]);
+        rect(g,x,y+1,2,1,colors[0]);
+      }
+    }
+  }
+  function shoreTree(g,x,y,key,colors) {
+    rect(g,x,y-10,2,11,"#6e6065");
+    line(g,x,y-4,x-5,y-10,"#77666a");line(g,x+1,y-6,x+6,y-13,"#77666a");
+    if(key==="winter"){
+      line(g,x-5,y-10,x-6,y-14,"#8793a1");line(g,x,y-10,x-2,y-17,"#8793a1");
+      line(g,x+2,y-8,x+5,y-12,colors[3]);return;
+    }
+    ellipse(g,x-4,y-10,5,3,colors[0]);ellipse(g,x+4,y-12,5,4,colors[1]);
+    ellipse(g,x-1,y-15,6,4,colors[1]);ellipse(g,x-2,y-16,4,2,colors[2]);
+    rect(g,x-5,y-17,3,1,colors[3]);rect(g,x+4,y-13,3,1,colors[2]);
+  }
+  function background(key,palette) {
+    const board=layer(), g=board.getContext("2d"), rnd=seed(842037);
+    const skyEdges=[0,12,24,37,50,62,80], sky=palette.sky;
+    sky.forEach((c,i)=>rect(g,0,skyEdges[i],W,skyEdges[i+1]-skyEdges[i],c));
+    for(let i=1;i<sky.length;i++) {
+      for(let j=0;j<21;j++) rect(g,rnd()*W,skyEdges[i]-2+rnd()*2,2+rnd()*17,1,sky[i]);
+    }
+    if(key==="summer"){
+      for(let i=0;i<33;i++)rect(g,rnd()*W,rnd()*36,1,1,i%3?"#b7bcc9":"#e3d8c9");
+      // Illuminate the left edge of a moon disk; leave the sky banding visible in its hollow.
+      for(let y=-10;y<=10;y++){
+        const outer=Math.floor(Math.sqrt(100-y*y));
+        const inset=Math.sqrt(Math.max(0,100-(y+3)*(y+3)));
+        const right=Math.min(outer,Math.floor(5-inset));
+        rect(g,205-outer,22+y,right+outer,1,palette.sun[1]);
+      }
+    }else{
+      ellipse(g,205,44,20,20,palette.sun[0]);ellipse(g,205,44,17,17,palette.sun[1]);
+      rect(g,185,51,40,1,palette.sun[0]);
+    }
+    cloud(g,-15,11,1,...palette.cloud);cloud(g,69,22,.82,...palette.cloud);
+    cloud(g,252,7,1.11,...palette.cloud);cloud(g,336,33,.65,...palette.cloud);
+    rect(g,143,43,41,1,sky[4]);rect(g,159,45,21,1,sky[4]);
     poly(g,[[0,52],[15,44],[29,48],[46,40],[62,47],[74,44],[91,53],[115,49],[131,55],
       [152,49],[177,57],[197,54],[216,58],[240,49],[254,54],[273,43],[284,45],[299,36],
-      [312,46],[325,42],[344,47],[356,40],[373,44],[384,40],[384,79],[0,79]],"#ae9ba8");
+      [312,46],[325,42],[344,47],[356,40],[373,44],[384,40],[384,79],[0,79]],palette.hills[0]);
+    if(key==="winter"){
+      for(const [x,y] of [[46,40],[273,43],[299,36],[356,40]])
+        poly(g,[[x-9,y+6],[x,y],[x+7,y+5],[x+3,y+4],[x+1,y+5],[x-2,y+3],[x-5,y+5]],"#e0e6e6");
+    }
     poly(g,[[0,63],[14,57],[32,64],[47,61],[64,63],[80,56],[99,62],[115,56],[129,61],
       [147,59],[166,65],[185,62],[203,65],[221,61],[239,64],[256,56],[274,61],[291,53],
-      [312,61],[332,54],[347,60],[362,52],[379,57],[384,54],[384,79],[0,79]],"#9290a1");
+      [312,61],[332,54],[347,60],[362,52],[379,57],[384,54],[384,79],[0,79]],palette.hills[1]);
     poly(g,[[0,67],[17,61],[39,63],[49,57],[62,59],[72,58],[88,66],[96,67],[108,69],[126,74],
-      [152,74],[160,77],[0,81]],"#687a84");
-    poly(g,[[252,76],[272,71],[292,69],[311,61],[331,67],[346,60],[365,56],[384,53],[384,80]],"#72838a");
+      [152,74],[160,77],[0,81]],palette.hills[2]);
+    poly(g,[[252,76],[272,71],[292,69],[311,61],[331,67],[346,60],[365,56],[384,53],[384,80]],palette.hills[3]);
     for(let x=0;x<103;x+=2+Math.floor(rnd()*4)) {
       const y=Math.floor(68+Math.max(0,x-72)*.14);
-      pine(g,x,y,3+Math.floor(rnd()*5),"#697b83");
+      pine(g,x,y,3+Math.floor(rnd()*5),palette.hills[2]);
     }
     village(g);
-    const sea=[[78,8,"#a8b6a5"],[86,10,"#92b0a0"],[96,15,"#7aa69b"],[111,19,"#689b94"],
-      [130,22,"#588d89"],[152,24,"#497e7d"],[176,29,"#3d7076"]];
+    shoreTree(g,73,77,key,palette.leaf);shoreTree(g,89,79,key,palette.leaf);
+    const depths=[78,86,96,111,130,152,176,205];
+    const sea=palette.sea.map((color,i)=>[depths[i],depths[i+1]-depths[i],color]);
     sea.forEach(([y,h,c])=>rect(g,0,y,W,h,c));
     // Dither band joins and paint the breaking surface as short horizontal strokes.
     for(let i=1;i<sea.length;i++) {
       const [y,,c]=sea[i];
       for(let s=0;s<67;s++) rect(g,rnd()*W,y-2+rnd()*4,1+rnd()*8,1,s%2?c:sea[i-1][2]);
     }
-    const bright=["#c5c5aa","#a8bc9f","#9bb5a0","#85a99a","#67988e","#61918b","#52828a"];
-    const dark=["#98ac9f","#87a79c","#77a195","#67948b","#50847e","#477a7b","#386970"];
+    const bright=[palette.ripple,...palette.sea.slice(0,-1)],dark=palette.sea.slice(1).concat(palette.sea[6]);
     sea.forEach(([y,h],i)=>{
       for(let k=0;k<70;k++){
         const x=Math.floor(rnd()*W), yy=y+Math.floor(rnd()*h), length=1+Math.floor(rnd()*(i+3));
@@ -176,17 +254,35 @@
         if(i>3 && k%8===0) rect(g,x+length,yy-1,2,1,bright[i]);
       }
     });
-    // Narrow golden light lane, broken by the wind.
+    // Catch the colour of the sun (or summer moon) in a narrow broken path on the water.
     for(let i=0;i<155;i++) {
       const d=rnd(), y=Math.floor(79+100*d), x=205+(rnd()-.5)*(13+72*d);
-      rect(g,x,y,1+Math.floor(rnd()*(8-4*d)),1,
-        d<.15?"#e4c6a0":d<.36?"#c9bc9b":d<.68?"#a7ae91":"#879e8d");
+      g.globalAlpha=.55-.32*d;
+      rect(g,x,y,1+Math.floor(rnd()*(8-4*d)),1,palette.reflection);
     }
+    g.globalAlpha=1;
     // Fishing skiff on the horizon with a tiny lateen sail.
     poly(g,[[126,77],[137,77],[133,80],[129,80]],"#6f8586");
     rect(g,132,68,1,9,"#889493");poly(g,[[131,69],[131,76],[127,76]],"#dfbea3");
     rect(g,127,81,9,1,"#a1ae9f");
     lighthouse(g);
+    shoreTree(g,355,77,key,palette.leaf);
+    if(key==="summer"){
+      // A low beam fades into the haze from the lantern room, clear of the fishing berths.
+      g.globalAlpha=.08;
+      poly(g,[[329,33],[256,29],[263,40],[329,35]],"#ffe4a7");
+      g.globalAlpha=.11;
+      poly(g,[[329,33],[290,32],[290,37],[329,35]],"#ffdfa0");
+      g.globalAlpha=1;
+      rect(g,329,33,4,2,"#fff1bf");
+    }
+    if(key==="winter") {
+      poly(g,[[307,63],[312,56],[322,56],[325,60],[317,58],[311,62]],"#e6ece8");
+      rect(g,327,29,9,1,"#eef2ea");
+      for(const [x,y,w] of [[285,76,8],[303,73,8],[342,74,9],[357,78,4],[298,67,3],[300,61,3],[344,68,4]])
+        rect(g,x,y,w,1,"#d2e4e3");
+    }
+    branch(g,key,palette.leaf);
     return board;
   }
   function crate(g,x,y) {
@@ -235,7 +331,7 @@
     P([[1,-25],[12,-8],[1,-7]],"#bd8778");R(0,-29,6,2,"#c16e67");
     R(-6,-6,14,3,"#91725e");R(-5,-6,13,1,"#ceb38a");
   }
-  function furniture() {
+  function furniture(key) {
     const board=layer(),g=board.getContext("2d"),rnd=seed(31374);
     dock(g,0,265,112,rnd);dock(g,66,384,163,rnd);
     crate(g,252,105);lantern(g,6,112);lantern(g,373,163);
@@ -244,7 +340,71 @@
     for(let j=0;j<3;j++)rect(g,260-j,122+j*3,4,1,"#b19872");
     rect(g,72,157,5,6,"#715d50");rect(g,71,156,7,2,"#c29567");rect(g,72,160,5,1,"#b6a185");
     crate(g,355,156);
+    if(key==="winter"){
+      for(const [left,end,y] of [[0,265,112],[66,384,163]]){
+        for(let x=left+1;x<end-10;x+=9+Math.floor(rnd()*14)){
+          const width=4+Math.floor(rnd()*6);
+          rect(g,x,y,width,2,"#d6e4e5");rect(g,x+1,y-1,width-3,1,"#f1f2e9");
+          if(width>7)rect(g,x+2,y+2,1,2,"#bfd4d9");
+        }
+      }
+      rect(g,252,104,9,2,"#e5edef");rect(g,355,155,8,2,"#e5edef");
+    }else if(key==="autumn" || key==="spring"){
+      const litter=key==="autumn"?["#b86645","#edb554"]:["#df99a4","#f7ccd1"];
+      for(const [x,y] of [[3,115],[14,115],[127,113],[247,115],[72,166],[269,164],[353,166],[370,164]]){
+        rect(g,x,y,3,1,litter[0]);rect(g,x+1,y-1,2,1,litter[1]);
+      }
+    }
     return board;
+  }
+  const weatherSeed=seed(32165);
+  const motes=Array.from({length:76},()=>({
+    x:weatherSeed()*W,y:weatherSeed()*H,phase:weatherSeed()*Math.PI*2,depth:weatherSeed()
+  }));
+  function wrap(value,span){return ((value%span)+span)%span;}
+  function atmosphere(g,key,t) {
+    if(key==="summer"){
+      for(let i=0;i<30;i++){
+        const p=motes[i];
+        const pulse=Math.sin(t*(.75+p.depth)+p.phase);
+        if(pulse<-.32)continue;
+        const x=p.x+4*Math.sin(t*.32+p.phase);
+        const y=81+p.y*.52+3*Math.sin(t*.61+p.phase);
+        g.globalAlpha=.12+.16*Math.max(0,pulse);
+        rect(g,x-1,y-1,3,3,"#ffdd82");
+        if(p.depth>.7 && pulse>.45){
+          rect(g,x-2,y,5,1,"#ffdd82");rect(g,x,y-2,1,5,"#ffdd82");
+        }
+        g.globalAlpha=.64+.32*Math.max(0,pulse);
+        rect(g,x,y,1,1,"#fff6ab");
+      }
+      g.globalAlpha=1;
+      return;
+    }
+    const snow=key==="winter", leaf=key==="autumn";
+    const count=snow?76:leaf?25:37;
+    for(let i=0;i<count;i++){
+      const p=motes[i], wave=Math.sin(t*(.8+p.depth*.65)+p.phase);
+      const drift=snow?2.5:leaf?10:7, fall=snow?9:leaf?8:6;
+      const x=wrap(p.x+t*drift*(.55+p.depth)+wave*(2+p.depth*3),W+8)-4;
+      const y=wrap(p.y+t*fall*(.5+p.depth)+Math.sin(t*.7+p.phase)*1.6,H+8)-4;
+      if(snow){
+        const size=p.depth>.82?2:1;
+        rect(g,x,y,size,size,p.depth>.55?"#f4f5ef":"#d6e3eb");
+      }else if(leaf){
+        rect(g,x,y,wave>.3?3:2,1,p.depth>.4?"#cb7646":"#b65f47");
+        rect(g,x+(wave>.3?1:0),y-1,2,1,"#edaa57");
+        if(p.depth>.65){
+          rect(g,x-1,y+1,2,1,"#9c6047");rect(g,x+2,y-2,2,1,"#f7be6b");
+        }
+      }else{
+        rect(g,x,y,wave>.2?2:1,1,"#fae0d9");
+        rect(g,x+(wave>.2?1:0),y+1,1,1,"#de9fae");
+        if(p.depth>.72 && wave>-.45){
+          rect(g,x+1,y-1,2,1,"#ffe7e5");rect(g,x+2,y,1,1,"#f3b5c5");
+        }
+      }
+    }
   }
   function chair(g,x,y,vip) {
     const outline=vip?"#755737":"#67564d", wood=vip?"#d4a14f":"#94745e";
@@ -360,20 +520,26 @@
     let scene=views.get(canvas);
     if(!scene) {
       canvas.width=W; canvas.height=H; canvas.style.imageRendering="pixelated";
-      scene={g:canvas.getContext("2d"),back:background(),dock:furniture(),ripples:[],seats:new Map(),caught:new Map()};
+      scene={g:canvas.getContext("2d"),season:null,ripples:[],seats:new Map(),caught:new Map()};
       const rnd=seed(92014);
       for(let i=0;i<47;i++) scene.ripples.push([Math.floor(rnd()*W),91+Math.floor(rnd()*112),1+Math.floor(rnd()*8),rnd()*6.28]);
       views.set(canvas,scene);
     }
     const g=scene.g; if(!g)return;
-    const t=(timeMs || 0)/1000;
-    updateCatchState(scene,state,t);
+    const key=Object.hasOwn(seasons,state?.season?.key)?state.season.key:"spring";
+    const palette=seasons[key];
+    if(scene.season!==key){
+      scene.back=background(key,palette);scene.dock=furniture(key);scene.season=key;
+    }
+    const elapsed=(timeMs || 0)/1000;
+    const t=motionPreference?.matches?4:elapsed;
+    updateCatchState(scene,state,elapsed);
     g.imageSmoothingEnabled=false;
     g.drawImage(scene.back,0,0);
     for(const [x,y,w,phase] of scene.ripples) {
       if(Math.sin(t*.85+phase+y)>.1) {
         const dx=Math.round(2*Math.sin(t*.45+phase));
-        rect(g,x+dx,y,w,1,y>155?"#65918b":"#a0b4a1");
+        rect(g,x+dx,y,w,1,y>155?palette.sea[4]:palette.ripple);
       }
     }
     for(let i=0;i<3;i++) {
@@ -381,6 +547,7 @@
       bird(g,bx,by,Math.sin(t*2.7+i)>0);
     }
     sailboat(g,37+Math.round(Math.sin(t*.45)),157+Math.round(Math.sin(t*.95)));
+    atmosphere(g,key,t);
     g.drawImage(scene.dock,0,0);
     // A wild sardine briefly breaks the open water, away from all twelve hooks.
     const wildPhase=(t%8.5)/.78;
@@ -397,8 +564,9 @@
       const id=idx+1, seat=scene.seats.get(id)||{}, vip=seat.vip || id>=11;
       chair(g,x,y,vip);
       const catchAnimation=scene.caught.get(id);
-      if(catchAnimation && window.FishSprites && t-catchAnimation.start<catchDuration) {
-        celebrateCatch(g,x,y,idx,catchAnimation.record,t-catchAnimation.start);
+      if(catchAnimation && window.FishSprites && elapsed-catchAnimation.start<catchDuration) {
+        const age=motionPreference?.matches?1:elapsed-catchAnimation.start;
+        celebrateCatch(g,x,y,idx,catchAnimation.record,age);
       } else if(seat.name) {
         angler(g,x,y,idx,seat,t);
       }

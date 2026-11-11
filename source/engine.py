@@ -23,6 +23,10 @@ IDLE_SECONDS = 60
 CAST_SECONDS_RANGE = (5, 20)
 NORMAL_SEATS = 10
 TOTAL_SEATS = 12
+SEASON_SECONDS = 10 * 60
+SEASONS = {"spring": "春季", "summer": "夏季", "autumn": "秋季", "winter": "冬季"}
+SEASON_ORDER = tuple(SEASONS)
+SEASON_ACTIONS = {"season_" + key: key for key in SEASONS}
 
 
 def draw_fish(rng, upgraded):
@@ -76,6 +80,9 @@ class Engine:
                 size TEXT NOT NULL, rod TEXT NOT NULL, caught_at REAL NOT NULL
             );
             CREATE TABLE IF NOT EXISTS message(id TEXT PRIMARY KEY, result TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS season_clock(
+                id INTEGER PRIMARY KEY CHECK(id=1), season_key TEXT NOT NULL, started_at REAL NOT NULL
+            );
         """)
         with self._transaction() as db:
             row = db.execute("SELECT mode FROM session_info LIMIT 1").fetchone()
@@ -83,6 +90,7 @@ class Engine:
                 raise ValueError("该存档属于其他运行模式，请使用独立存档")
             if not row:
                 db.execute("INSERT INTO session_info VALUES(?)", (mode,))
+            db.execute("INSERT OR IGNORE INTO season_clock VALUES(1, 'spring', ?)", (time.time(),))
             seat_columns = {column["name"] for column in db.execute("PRAGMA table_info(seat)")}
             if "idle_until" not in seat_columns:
                 db.execute("ALTER TABLE seat ADD COLUMN idle_until REAL NOT NULL DEFAULT 0")
@@ -189,6 +197,10 @@ class Engine:
         self._fill_queues(db, now)
 
     def _handle(self, db, uid, name, action, count, now):
+        if action in SEASON_ACTIONS:
+            key = SEASON_ACTIONS[action]
+            db.execute("UPDATE season_clock SET season_key=?, started_at=? WHERE id=1", (key, now))
+            return f"{name} 的礼物让渔港进入{SEASONS[key]}，本季从现在起持续 10 分钟"
         db.execute("""INSERT INTO angler(uid,name) VALUES(?,?) ON CONFLICT(uid)
                       DO UPDATE SET name=excluded.name""", (uid, name))
         seat = db.execute("SELECT id,cast_due_at,queued_casts FROM seat WHERE uid=?", (uid,)).fetchone()
@@ -222,7 +234,7 @@ class Engine:
         return self._request_seat(db, now, uid, name, vip=True)
 
     def event(self, event_id, uid, name, action, count=1):
-        if action not in ("join", "leave", "vip", "rod", "fish"):
+        if action not in ("join", "leave", "vip", "rod", "fish", *SEASON_ACTIONS):
             return "未匹配玩法指令"
         if not isinstance(event_id, str) or not event_id or not isinstance(uid, str) or not uid:
             raise ValueError("缺少事件或观众标识")
@@ -241,6 +253,15 @@ class Engine:
     def advance(self, now=None):
         with self._transaction() as db:
             self._advance(db, time.time() if now is None else now)
+
+    def _season(self, db, now):
+        # The persisted anchor also covers missed boundaries while the room was closed.
+        anchor = db.execute("SELECT season_key, started_at FROM season_clock WHERE id=1").fetchone()
+        elapsed = max(0, int((now - anchor["started_at"]) // SEASON_SECONDS))
+        index = (SEASON_ORDER.index(anchor["season_key"]) + elapsed) % len(SEASON_ORDER)
+        key = SEASON_ORDER[index]
+        return {"key": key, "name": SEASONS[key],
+                "nextChangeAt": anchor["started_at"] + (elapsed + 1) * SEASON_SECONDS}
 
     def state(self):
         with self._transaction(read=True) as db:
@@ -263,7 +284,9 @@ class Engine:
             """)]
             waiting_vip = db.execute("SELECT count(*) FROM vip_queue").fetchone()[0]
             waiting_normal = db.execute("SELECT count(*) FROM normal_queue").fetchone()[0]
-            return {"mode": self.mode, "demo": self.mode == "demo", "server_time": time.time(),
+            now = time.time()
+            return {"mode": self.mode, "demo": self.mode == "demo", "server_time": now,
+                    "season": self._season(db, now),
                     "cast_seconds": self.interval, "cast_seconds_range": CAST_SECONDS_RANGE,
                     "seats": seats, "ranking": ranking,
                     "catches": catches, "waiting_vip": waiting_vip, "waiting_normal": waiting_normal}

@@ -33,6 +33,16 @@ h2 {font-weight:680;font-size:18px;letter-spacing:.035em}
 .strip h2:before {display:inline-block;content:"";width:6px;height:12px;background:var(--sea);margin:0 9px -1px 0}
 .occupancy,.subtle,.seat-head span {font-size:12px;color:var(--soft)}
 .occupancy {gap:4px}.occupancy i {margin-right:2px}.occupancy b {color:var(--paper);font-family:Consolas,monospace}
+.harbor-heading,.season-status {display:flex;align-items:center;flex-wrap:wrap}
+.harbor-heading {gap:4px 14px}.harbor-heading h2,.occupancy {white-space:nowrap}
+.season-status {gap:3px 8px;font-size:12px}
+[data-season="spring"] {--season-color:#efb9cd}
+[data-season="summer"] {--season-color:#bcdd8b}
+[data-season="autumn"] {--season-color:#f5b477}
+[data-season="winter"] {--season-color:#afdaf6}
+#season-name {color:var(--season-color);padding:1px 5px;border:1px solid currentColor;line-height:1.4;font-size:12px}
+.season-forecast {color:var(--soft);white-space:nowrap}
+#season-clock {font:600 12px Consolas,monospace;color:var(--paper)}
 .scene-wrap {position:relative;background:#325963}
 #harbor {width:100%;height:auto;display:block;aspect-ratio:32/17}
 .catch-announcement {position:absolute;inset:8px 8px auto auto;max-width:min(280px,calc(100% - 16px));pointer-events:none}
@@ -44,6 +54,10 @@ h2 {font-weight:680;font-size:18px;letter-spacing:.035em}
 kbd {padding:2px 5px;border:1px solid #739d8f;background:#274a47;color:#cfecce;font:inherit;font-weight:600;white-space:nowrap}
 .receipt-note {flex-basis:100%;color:var(--sea);overflow-wrap:anywhere}
 .gift-note:before {content:"✦";color:var(--sun)}.gift-note {color:#eac896}
+.directions .season-guide {flex-basis:100%;flex-wrap:wrap;align-items:baseline;gap:3px 10px}
+.season-guide ul {display:flex;flex-wrap:wrap;gap:2px 12px;list-style:none;padding:0;min-width:0}
+.season-guide li {color:var(--paper);overflow-wrap:anywhere}
+.season-guide b {font-weight:600;color:var(--season-color)}
 .head-label {gap:8px}.trophy {font-size:16px;color:var(--sun)}
 .ranking,.catch-list {list-style:none;padding:0 14px}
 .rank-row,.catch-row {display:flex;align-items:center;border-bottom:1px solid #354a51;gap:9px;min-width:0}
@@ -116,6 +130,8 @@ button.join:enabled:hover {background:#a6d6c1}
 .control-row input {width:108px;height:31px;padding:4px 7px;background:var(--inner);color:var(--paper);border:1px solid #50676a;border-radius:2px}
 .control-row label {color:var(--soft)}
 .sim-actions {gap:6px;flex-wrap:wrap}
+.season-controls {padding-top:9px;color:var(--soft)}
+.season-controls button {color:var(--season-color);overflow-wrap:anywhere}
 #sim-result {padding:8px 14px 13px;color:var(--soft);font-size:12px;min-height:34px}
 :focus-visible {outline:2px solid var(--sun);outline-offset:2px}
 @media (min-width:761px){
