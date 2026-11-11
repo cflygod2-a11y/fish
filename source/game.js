@@ -259,7 +259,7 @@ function renderActions(s) {
   $('#sim-rod').hidden = !gifts.rod;
 }
 function animate(now) {
-  if (document.visibilityState !== 'hidden' && state && now - lastPaint >= (reduceMotion.matches ? 1000 : 95)) {
+  if (document.visibilityState !== 'hidden' && state && now - lastPaint >= (reduceMotion.matches ? 1000 : 50)) {
     updateSeasonClock(performance.now());
     if (typeof window.drawFishingScene === 'function') {
       window.drawFishingScene($('#harbor'),state,now);

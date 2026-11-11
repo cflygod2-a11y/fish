@@ -74,7 +74,8 @@ class Engine:
                 id INTEGER PRIMARY KEY, uid TEXT UNIQUE REFERENCES angler(uid),
                 idle_until REAL NOT NULL DEFAULT 0, last_at REAL NOT NULL DEFAULT 0,
                 cast_due_at REAL NOT NULL DEFAULT 0, seat_order INTEGER NOT NULL DEFAULT 0,
-                queued_casts INTEGER NOT NULL DEFAULT 0, cast_from_gift INTEGER NOT NULL DEFAULT 0
+                queued_casts INTEGER NOT NULL DEFAULT 0, cast_from_gift INTEGER NOT NULL DEFAULT 0,
+                cast_started_at REAL NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS normal_queue(
                 seq INTEGER PRIMARY KEY, uid TEXT UNIQUE NOT NULL REFERENCES angler(uid)
@@ -105,6 +106,9 @@ class Engine:
                 db.execute("UPDATE seat SET idle_until=? WHERE uid IS NOT NULL", (time.time() + IDLE_SECONDS,))
             if "cast_due_at" not in seat_columns:
                 db.execute("ALTER TABLE seat ADD COLUMN cast_due_at REAL NOT NULL DEFAULT 0")
+            if "cast_started_at" not in seat_columns:
+                # An older active cast has no reliable start time, so resume it as waiting.
+                db.execute("ALTER TABLE seat ADD COLUMN cast_started_at REAL NOT NULL DEFAULT 0")
             if "seat_order" not in seat_columns:
                 db.execute("ALTER TABLE seat ADD COLUMN seat_order INTEGER NOT NULL DEFAULT 0")
                 db.execute("UPDATE seat SET seat_order=id WHERE uid IS NOT NULL")
@@ -134,7 +138,7 @@ class Engine:
 
     def _release_seat(self, db, seat_id):
         db.execute("""UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0,
-                      seat_order=0,queued_casts=0,cast_from_gift=0
+                      seat_order=0,queued_casts=0,cast_from_gift=0,cast_started_at=0
                       WHERE id=?""", (seat_id,))
 
     def _fill_seats(self, db, now, vip):
@@ -151,16 +155,18 @@ class Engine:
             if not seat:
                 break
             uid = member["uid"]
-            previous = db.execute("SELECT id,cast_due_at,queued_casts,cast_from_gift FROM seat WHERE uid=?",
+            previous = db.execute("SELECT id,cast_due_at,cast_started_at,queued_casts,cast_from_gift FROM seat WHERE uid=?",
                                   (uid,)).fetchone()
             due = previous["cast_due_at"] if previous else 0
+            started = previous["cast_started_at"] if previous else 0
             queued = previous["queued_casts"] if previous else 0
             from_gift = previous["cast_from_gift"] if previous else 0
             if previous:
                 self._release_seat(db, previous["id"])
-            db.execute("""UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=?,queued_casts=?,cast_from_gift=?,
+            db.execute("""UPDATE seat SET uid=?,last_at=0,idle_until=?,cast_due_at=?,cast_started_at=?,
+                          queued_casts=?,cast_from_gift=?,
                           seat_order=(SELECT max(seat_order)+1 FROM seat) WHERE id=?""",
-                       (uid, now + IDLE_SECONDS, due, queued, from_gift, seat["id"]))
+                       (uid, now + IDLE_SECONDS, due, started, queued, from_gift, seat["id"]))
             db.execute(f"DELETE FROM {queue} WHERE uid=?", (uid,))
             if vip:
                 db.execute("DELETE FROM normal_queue WHERE uid=?", (uid,))
@@ -185,8 +191,8 @@ class Engine:
 
     def _start_cast(self, db, name, seat, now, from_gift=False):
         delay = self._cast_delay()
-        db.execute("UPDATE seat SET cast_due_at=?,cast_from_gift=? WHERE id=?",
-                   (now + delay, from_gift, seat["id"]))
+        db.execute("UPDATE seat SET cast_due_at=?,cast_started_at=?,cast_from_gift=? WHERE id=?",
+                   (now + delay, now, from_gift, seat["id"]))
         return f"{name} 已下竿，等待 {delay:g} 秒上鱼"
 
     def _request_cast(self, db, uid, name, seat, now):
@@ -226,9 +232,10 @@ class Engine:
         queued = seat["queued_casts"]
         next_from_gift = not queued and seat["gift_casts"] > used_gift
         next_due = now + self._cast_delay() if queued or next_from_gift else 0
-        db.execute("""UPDATE seat SET last_at=?,idle_until=?,cast_due_at=?,queued_casts=?,cast_from_gift=?
+        db.execute("""UPDATE seat SET last_at=?,idle_until=?,cast_due_at=?,cast_started_at=?,queued_casts=?,cast_from_gift=?
                       WHERE id=?""",
-                   (now, now + IDLE_SECONDS, next_due, max(0, queued - 1), next_from_gift, seat["id"]))
+                   (now, now + IDLE_SECONDS, next_due, now if next_due else 0,
+                    max(0, queued - 1), next_from_gift, seat["id"]))
 
     def _advance(self, db, now):
         ready = db.execute("""SELECT s.id, s.queued_casts, s.cast_from_gift, a.uid, a.name, a.rods, a.gift_casts
@@ -307,7 +314,7 @@ class Engine:
             now = time.time()
             seats = [dict(r) for r in db.execute("""
                 SELECT s.id,s.id>10 AS vip,a.name,coalesce(a.rods,0) AS rod_ready,
-                    s.last_at AS last_catch_at,
+                    s.last_at AS last_catch_at,s.cast_started_at,s.cast_due_at,
                     s.queued_casts + CASE WHEN s.cast_due_at>0 THEN coalesce(a.gift_casts,0)-s.cast_from_gift ELSE 0 END
                         AS queued_casts,
                     ? - CASE WHEN a.free_cast_day=? THEN a.free_cast_used ELSE 0 END AS free_casts_left,
