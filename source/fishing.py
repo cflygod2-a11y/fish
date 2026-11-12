@@ -24,6 +24,7 @@ HOME_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False
 DEMO_PLAYERS = ("小满", "阿潮", "星野", "橘猫", "白露", "海盐", "半夏", "小渔", "椰青", "薄荷", "晚风", "阿渡")
 DEMO_SEASON_GIFTS = {"spring": "春樱", "summer": "流萤", "autumn": "枫叶", "winter": "雪花"}
 FILES = {"/": ("game.html", "text/html"), "/scene.js": ("scene.js", "application/javascript"),
+         "/npc.js": ("npc.js", "application/javascript"),
          "/species.js": ("species.js", "application/javascript"),
          "/game.js": ("game.js", "application/javascript"), "/game.css": ("game.css", "text/css")}
 
@@ -59,9 +60,9 @@ class Inbox:
                 self.db.execute("DELETE FROM inbox WHERE seq<=?", (rows[-1][0],))
 
 
-def demo_event(game, name, action):
+def demo_event(game, name, action, count=1):
     uid = "demo:" + name.casefold()
-    return game.event(uuid.uuid4().hex, uid, name, action)
+    return game.event(uuid.uuid4().hex, uid, name, action, count)
 
 
 def gift_configuration(live, platform="douyin"):
@@ -71,26 +72,32 @@ def gift_configuration(live, platform="douyin"):
     gift_prefix = "BILIBILI" if bilibili else "FISH"
     id_field = "gift_id" if bilibili else "sec_gift_id"
 
-    def configure(action, prefix, default_label):
+    def configure(action, prefix, default_label, legacy_prefix=None):
         gift_id = os.getenv(prefix + "_ID", "").strip() if live else ""
+        configured_prefix = prefix
+        if live and not gift_id and legacy_prefix:
+            gift_id = os.getenv(legacy_prefix + "_ID", "").strip()
+            configured_prefix = legacy_prefix
         if gift_id:
             if bilibili and not (gift_id.isascii() and gift_id.isdecimal() and gift_id[0] != "0"):
                 raise ValueError(f"{prefix}_ID 必须是正整数 gift_id")
             if gift_id in actions:
                 raise ValueError(f"{prefix}_ID 的 {id_field} 已绑定到 {actions[gift_id]}，每种礼物须单独配置")
             actions[gift_id] = action
-        label = os.getenv(prefix + "_NAME", "").strip() or default_label
+        label = (os.getenv(prefix + "_NAME", "").strip() or
+                 (os.getenv(configured_prefix + "_NAME", "").strip() if live else "") or default_label)
         return {"enabled": not live or bool(gift_id), "label": label}
 
     vip = configure("vip", gift_prefix + "_VIP_GIFT", "席位礼物")
-    rod = configure("rod", gift_prefix + "_ROD_GIFT", "鱼竿礼物")
+    bait = configure("bait", gift_prefix + "_BAIT_GIFT", "鱼饵包", gift_prefix + "_ROD_GIFT")
     seasons = {
         key: configure("season_" + key, f"{gift_prefix}_{key.upper()}_GIFT",
                        name + "礼物" if live else DEMO_SEASON_GIFTS[key])
         for key, name in SEASONS.items()
     }
     return actions, {"vip": vip["enabled"], "vip_label": vip["label"],
-                     "rod": rod["enabled"], "rod_label": rod["label"], "seasons": seasons}
+                     "bait": bait["enabled"], "bait_label": bait["label"],
+                     "bait_casts_per_gift": 10, "seasons": seasons}
 
 
 def main():
@@ -157,7 +164,7 @@ def main():
               for path, (filename, typ) in FILES.items() if (ASSETS / filename).is_file()}
     if "/" not in assets or "/scene.js" not in assets:
         raise FileNotFoundError("缺少画面文件，请使用完整发行包或源码目录")
-    demo_actions = ("join", "leave", "vip", "rod", "fish", *SEASON_ACTIONS)
+    demo_actions = ("join", "leave", "vip", "bait", "rod", "fish", *SEASON_ACTIONS)
     done = threading.Event()
     interaction_route = "/douyin" if douyin_live else "/simulate" if not args.live else None
 
@@ -243,7 +250,10 @@ def main():
             name = clean_name(req.get("name"))
             if not name or action not in demo_actions:
                 return self.send(400, {"message": "请填写钓手名，并选择有效操作。"})
-            return self.send(200, {"message": demo_event(game, name, action)})
+            count = req.get("count", 1)
+            if type(count) is not int or not 1 <= count <= 100:
+                return self.send(400, {"message": "试玩礼物数量应为 1 到 100 的整数。"})
+            return self.send(200, {"message": demo_event(game, name, action, count)})
 
     def loop():
         while not done.wait(.25):

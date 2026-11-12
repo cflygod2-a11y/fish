@@ -7,6 +7,7 @@
   <title>晚汐渔港 · 弹幕钓鱼</title>
   <link rel="stylesheet" href="/game.css">
   <script src="/species.js" defer></script>
+  <script src="/npc.js" defer></script>
   <script src="/scene.js" defer></script>
   <script src="/game.js" defer></script>
 </head>
@@ -28,19 +29,32 @@
         <div class="strip">
           <div class="harbor-heading">
             <h2>钓鱼码头</h2>
-            <div class="season-status" id="season-status" hidden>
-              <strong id="season-name" aria-live="polite"></strong>
-              <span class="season-forecast"><span id="season-clock" role="timer"></span> <span id="season-next"></span></span>
-            </div>
           </div>
           <span class="occupancy"><i class="activity-dot"></i><b id="total">0</b> 人垂钓</span>
         </div>
+        <div class="harbor-weather">
+          <div class="season-status" id="season-status" hidden>
+            <strong id="season-name" aria-live="polite"></strong>
+            <span class="season-forecast"><span id="season-clock" role="timer"></span> <span id="season-next"></span></span>
+          </div>
+          <div class="day-status" id="day-status" hidden title="游戏时间：10 秒 = 1 小时，4 分钟 = 1 天">
+            <i class="day-orb" aria-hidden="true"></i><span id="day-phase"></span>
+            <span id="day-clock" role="timer" aria-live="off"></span>
+          </div>
+        </div>
         <div class="scene-wrap">
-          <canvas id="harbor" width="384" height="204" aria-label="像素海港，共有十个普通钓位和两个贵宾钓位"></canvas>
+          <canvas id="harbor" width="384" height="204" aria-label="像素海港，共有十个普通钓位、两个贵宾钓位和猫娘阿喵的鱼饵小船"></canvas>
           <div id="angler-labels" class="angler-labels" aria-hidden="true"></div>
+          <div class="npc-dialogue" id="npc-dialogue" hidden role="status" aria-live="polite" aria-atomic="true">
+            <div class="npc-bubble-body">
+              <span class="visually-hidden" id="npc-name">阿喵</span><span class="visually-hidden" id="npc-caption"></span>
+              <p id="npc-text"></p>
+            </div>
+            <span class="npc-bubble-tail" aria-hidden="true"></span>
+          </div>
           <div class="catch-announcement" role="status" aria-atomic="true">
             <div id="legendary-catch" hidden>
-              <strong>✦ 传说鱼获</strong>
+              <strong id="legendary-title">✦ 传说鱼获</strong>
               <p id="legendary-message"></p>
             </div>
           </div>
@@ -64,6 +78,14 @@
       </section>
       <details class="panel atlas" id="fish-atlas">
         <summary><span>鱼种图鉴</span><span class="atlas-count" id="species-count"></span></summary>
+        <div class="atlas-filters" role="group" aria-label="按出现季节筛选鱼类">
+          <button type="button" data-atlas-season="all" aria-pressed="true">全部</button>
+          <button type="button" data-atlas-season="current" aria-pressed="false">当前季节</button>
+          <button type="button" data-atlas-season="spring" aria-pressed="false">春</button>
+          <button type="button" data-atlas-season="summer" aria-pressed="false">夏</button>
+          <button type="button" data-atlas-season="autumn" aria-pressed="false">秋</button>
+          <button type="button" data-atlas-season="winter" aria-pressed="false">冬</button>
+        </div>
         <ul id="species-grid" class="species-grid" aria-label="全部鱼种及外形特征"></ul>
       </details>
       <section class="panel dock" aria-labelledby="seats-title">
@@ -72,10 +94,11 @@
         <div class="seat-grid" id="normal-seats"></div>
         <div class="seat-head vip"><h3>VIP 尊贵席</h3><span id="vip-count">0 / 2</span><span class="waiting" id="waiting" hidden></span></div>
         <div class="seat-grid vip-grid" id="vip-seats"></div>
-        <details class="rules" id="rod-rules"><summary>钓竿与出鱼概率</summary>
-          <table><thead><tr><th>钓竿</th><th>稀有或传说</th><th>大或巨型</th></tr></thead>
-          <tbody><tr><td>普通竿</td><td>6%</td><td>20%</td></tr><tr id="good-odds"><td>好竿</td><td>24%</td><td>48%</td></tr></tbody></table>
-          <p id="odds-note">体型按同一鱼种比较。每次起鱼分别抽取鱼种和体型，好竿仅作用于一次抛竿。</p>
+        <details class="rules" id="bait-rules"><summary>鱼饵包与出鱼概率</summary>
+          <p class="bait-rule">每份鱼饵包增加 <b>10 次</b>钓鱼机会，免费与鱼饵次数使用相同概率。</p>
+          <table aria-label="所有钓鱼次数的稀有度概率"><thead><tr><th>稀有度</th><th>概率</th></tr></thead>
+          <tbody id="rarity-odds"><tr><td>常见</td><td>71.8%</td></tr><tr><td>少见</td><td>22%</td></tr><tr><td>稀有</td><td>5%</td></tr><tr><td>传说</td><td>1%</td></tr><tr><td>神秘</td><td>0.2%</td></tr></tbody></table>
+          <p id="odds-note">普通 / 大 / 巨型：80% / 17% / 3%。体型按同一鱼种比较；同一稀有度内，当季可出现的鱼等概率。按起鱼时的季节确定鱼池。</p>
         </details>
       </section>
       <section class="panel log" aria-labelledby="log-title">
@@ -93,7 +116,7 @@
             <button type="button" data-action="join" class="join">发「加入」</button>
             <button type="button" data-action="fish">发「钓鱼」</button>
             <button type="button" data-action="vip" id="sim-vip">送 VIP 席位礼物</button>
-            <button type="button" data-action="rod" id="sim-rod">送一竿好竿</button>
+            <button type="button" data-action="bait" id="sim-bait">送鱼饵包 · +10 次</button>
             <button type="button" data-action="leave">离席</button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 """Transactional single-session fishing rules for Python 3.9+."""
 import bisect
+import json
 import random
 import sqlite3
 import threading
@@ -7,22 +8,19 @@ import time
 import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from fish_catalog import RARITIES, SPECIES, SPECIES_BY_SEASON, is_tiny, public_catalog
 
 
-# Fish lengths are integer millimetres, shown to players in 0.1 cm steps.
-SPECIES = (
-    (("沙丁鱼", 100, 300), ("竹荚鱼", 140, 440), ("银鲳", 150, 500)),
-    (("花鲈", 260, 920), ("真鲷", 220, 960), ("蓝点马鲛", 280, 1120)),
-    (("红石斑", 320, 1220), ("黄鳍金枪鱼", 460, 1750), ("珍珠鳐", 420, 1460)),
-    (("星纹旗鱼", 900, 3200), ("金鳞皇带鱼", 1200, 3800)),
-)
-RARITIES = ("常见", "少见", "稀有", "传说")
 SIZE_NAMES = ("普通", "大", "巨型")
-RARITY_THRESHOLDS = ((72, 94, 99), (42, 76, 96))
-SIZE_THRESHOLDS = ((80, 97), (52, 88))
+# Shared by free casts and bait casts. The retired upgraded argument never changes odds.
+RARITY_THRESHOLDS = (7180, 9380, 9880, 9980)
+RARITY_PERCENTAGES = (71.8, 22, 5, 1, .2)
+SIZE_THRESHOLDS = (80, 97)
+SIZE_PERCENTAGES = (80, 17, 3)
 IDLE_SECONDS = 60
 CAST_SECONDS_RANGE = (5, 20)
 DAILY_FREE_CASTS = 10
+BAIT_CASTS_PER_GIFT = 10
 BEIJING_TIME = timezone(timedelta(hours=8))
 NORMAL_SEATS = 10
 TOTAL_SEATS = 12
@@ -30,13 +28,16 @@ SEASON_SECONDS = 10 * 60
 SEASONS = {"spring": "春季", "summer": "夏季", "autumn": "秋季", "winter": "冬季"}
 SEASON_ORDER = tuple(SEASONS)
 SEASON_ACTIONS = {"season_" + key: key for key in SEASONS}
+DAY_SECONDS_PER_HOUR = 10
+DAY_CYCLE_SECONDS = 24 * DAY_SECONDS_PER_HOUR
+DAY_START_HOUR = 6
 
 
-def draw_fish(rng, upgraded):
-    """Choose rarity, species and size independently of seat and prior catches."""
-    rarity = bisect.bisect_right(RARITY_THRESHOLDS[upgraded], rng.randrange(100))
-    fish, lo, hi = rng.choice(SPECIES[rarity])
-    size = bisect.bisect_right(SIZE_THRESHOLDS[upgraded], rng.randrange(100))
+def draw_fish(rng, upgraded=False, season="spring"):
+    """Draw from the current season; legacy upgraded input is deliberately ignored."""
+    rarity = bisect.bisect_right(RARITY_THRESHOLDS, rng.randrange(10000))
+    fish, lo, hi = rng.choice(SPECIES_BY_SEASON[season][rarity])
+    size = bisect.bisect_right(SIZE_THRESHOLDS, rng.randrange(100))
     cuts = (lo, lo + (hi-lo)*7//10, lo + (hi-lo)*9//10, hi+1)
     mm = rng.randrange(cuts[size], cuts[size+1])
     return fish, mm, RARITIES[rarity], SIZE_NAMES[size]
@@ -92,6 +93,13 @@ class Engine:
             CREATE TABLE IF NOT EXISTS season_clock(
                 id INTEGER PRIMARY KEY CHECK(id=1), season_key TEXT NOT NULL, started_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS day_clock(
+                id INTEGER PRIMARY KEY CHECK(id=1), started_at REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS schema_migration(name TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS scene_event(
+                id INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT NOT NULL
+            );
         """)
         with self._transaction() as db:
             row = db.execute("SELECT mode FROM session_info LIMIT 1").fetchone()
@@ -100,6 +108,7 @@ class Engine:
             if not row:
                 db.execute("INSERT INTO session_info VALUES(?)", (mode,))
             db.execute("INSERT OR IGNORE INTO season_clock VALUES(1, 'spring', ?)", (time.time(),))
+            db.execute("INSERT OR IGNORE INTO day_clock VALUES(1, ?)", (time.time(),))
             seat_columns = {column["name"] for column in db.execute("PRAGMA table_info(seat)")}
             if "idle_until" not in seat_columns:
                 db.execute("ALTER TABLE seat ADD COLUMN idle_until REAL NOT NULL DEFAULT 0")
@@ -123,6 +132,10 @@ class Engine:
                 if column not in angler_columns:
                     db.execute(f"ALTER TABLE angler ADD COLUMN {column} {definition}")
             db.executemany("INSERT OR IGNORE INTO seat(id) VALUES(?)", [(i,) for i in range(1, TOTAL_SEATS + 1)])
+            if not db.execute("SELECT 1 FROM schema_migration WHERE name='bait_v1'").fetchone():
+                # gift_casts already stores individual opportunities; never multiply that balance.
+                db.execute("UPDATE angler SET rods=0")
+                db.execute("INSERT INTO schema_migration VALUES('bait_v1')")
 
     @contextmanager
     def _transaction(self, read=False):
@@ -140,6 +153,12 @@ class Engine:
         db.execute("""UPDATE seat SET uid=NULL,last_at=0,idle_until=0,cast_due_at=0,
                       seat_order=0,queued_casts=0,cast_from_gift=0,cast_started_at=0
                       WHERE id=?""", (seat_id,))
+
+    def _scene_event(self, db, kind, uid, name, seat, now, **details):
+        payload = dict(kind=kind, uid=uid, name=name, seat=seat, at=now, **details)
+        event_id = db.execute("INSERT INTO scene_event(payload) VALUES(?)",
+                              (json.dumps(payload, ensure_ascii=False),)).lastrowid
+        db.execute("DELETE FROM scene_event WHERE id<=?", (event_id - 256,))
 
     def _fill_seats(self, db, now, vip):
         first, last = (NORMAL_SEATS + 1, TOTAL_SEATS) if vip else (1, NORMAL_SEATS)
@@ -170,6 +189,11 @@ class Engine:
             db.execute(f"DELETE FROM {queue} WHERE uid=?", (uid,))
             if vip:
                 db.execute("DELETE FROM normal_queue WHERE uid=?", (uid,))
+            member_info = db.execute("SELECT name,gift_casts FROM angler WHERE uid=?", (uid,)).fetchone()
+            if not previous:
+                self._scene_event(db, "join", uid, member_info["name"], seat["id"], now, vip=vip)
+            if not due and member_info["gift_casts"]:
+                self._start_cast(db, member_info["name"], seat, now, from_gift=True)
 
     def _fill_queues(self, db, now):
         self._fill_seats(db, now, vip=True)
@@ -203,10 +227,10 @@ class Engine:
                                   gift_casts FROM angler WHERE uid=?""", (today, uid)).fetchone()
         if allowance["used"] >= DAILY_FREE_CASTS:
             if allowance["gift_casts"] and not seat["cast_due_at"]:
-                return self._start_cast(db, name, seat, now, from_gift=True) + "（使用礼物机会）"
+                return self._start_cast(db, name, seat, now, from_gift=True) + "（使用鱼饵机会）"
             if allowance["gift_casts"]:
-                return f"{name} 的礼物机会会自动结算，请等待当前竿次结束"
-            return f"{name} 今日 {DAILY_FREE_CASTS} 次免费机会已用完，可送指定鱼竿礼物继续钓鱼"
+                return f"{name} 的鱼饵机会会自动结算，请等待当前竿次结束"
+            return f"{name} 今日 {DAILY_FREE_CASTS} 次免费机会已用完，鱼饵包每份可增加 {BAIT_CASTS_PER_GIFT} 次钓鱼机会"
         used = allowance["used"] + 1
         db.execute("UPDATE angler SET free_cast_day=?,free_cast_used=? WHERE uid=?", (today, used, uid))
         if seat["cast_due_at"]:
@@ -219,16 +243,15 @@ class Engine:
 
     def _land_fish(self, db, seat, now):
         uid = seat["uid"]
-        upgraded = seat["rods"] > 0
-        fish, mm, rarity, size = draw_fish(self.rng, upgraded)
-        rod = "好竿" if upgraded else "普通竿"
+        fish, mm, rarity, size = draw_fish(self.rng, season=self._season(db, now)["key"])
+        rod = "普通竿"
         caught = db.execute("""INSERT INTO catch(uid,seat,name,fish,mm,rarity,size,rod,caught_at)
                                VALUES(?,?,?,?,?,?,?,?,?)""",
                             (uid, seat["id"], seat["name"], fish, mm, rarity, size, rod, now)).lastrowid
         used_gift = seat["cast_from_gift"]
-        db.execute("""UPDATE angler SET rods=rods-?, gift_casts=gift_casts-?, best=CASE
+        db.execute("""UPDATE angler SET gift_casts=gift_casts-?, best=CASE
                       WHEN best IS NULL OR ?>(SELECT mm FROM catch WHERE id=best) THEN ?
-                      ELSE best END WHERE uid=?""", (int(upgraded), used_gift, mm, caught, uid))
+                      ELSE best END WHERE uid=?""", (used_gift, mm, caught, uid))
         queued = seat["queued_casts"]
         next_from_gift = not queued and seat["gift_casts"] > used_gift
         next_due = now + self._cast_delay() if queued or next_from_gift else 0
@@ -236,9 +259,13 @@ class Engine:
                       WHERE id=?""",
                    (now, now + IDLE_SECONDS, next_due, now if next_due else 0,
                     max(0, queued - 1), next_from_gift, seat["id"]))
+        tiny = is_tiny(fish, mm)
+        if rarity in ("传说", "神秘") or size == "巨型" or tiny:
+            self._scene_event(db, "catch", uid, seat["name"], seat["id"], now,
+                              catch_id=caught, fish=fish, cm=mm / 10, rarity=rarity, size=size, tiny=tiny)
 
     def _advance(self, db, now):
-        ready = db.execute("""SELECT s.id, s.queued_casts, s.cast_from_gift, a.uid, a.name, a.rods, a.gift_casts
+        ready = db.execute("""SELECT s.id, s.queued_casts, s.cast_from_gift, a.uid, a.name, a.gift_casts
                               FROM seat s JOIN angler a ON a.uid=s.uid
                               WHERE s.cast_due_at>0 AND s.cast_due_at<=? ORDER BY s.cast_due_at, s.id""",
                            (now,)).fetchall()
@@ -254,13 +281,16 @@ class Engine:
         db.execute("""INSERT INTO angler(uid,name) VALUES(?,?) ON CONFLICT(uid)
                       DO UPDATE SET name=excluded.name""", (uid, name))
         seat = db.execute("SELECT id,cast_due_at,queued_casts FROM seat WHERE uid=?", (uid,)).fetchone()
-        if action == "rod":
-            db.execute("UPDATE angler SET rods=rods+?,gift_casts=gift_casts+? WHERE uid=?", (count, count, uid))
+        if action == "bait":
+            casts = count * BAIT_CASTS_PER_GIFT
+            db.execute("UPDATE angler SET gift_casts=gift_casts+? WHERE uid=?", (casts, uid))
+            self._scene_event(db, "bait", uid, name, seat["id"] if seat else None, now,
+                              count=count, casts=casts)
             if seat and not seat["cast_due_at"]:
-                return self._start_cast(db, name, seat, now, from_gift=True) + f" · 获得 {count} 次礼物机会"
+                return self._start_cast(db, name, seat, now, from_gift=True) + f" · 鱼饵包增加 {casts} 次机会，出鱼概率不变"
             if seat:
-                return f"{name} 获得 {count} 次礼物机会，已加入待下竿队列"
-            return f"{name} 获得 {count} 次礼物机会和好竿，入座后可使用"
+                return f"{name} 的鱼饵包增加 {casts} 次机会，已加入待下竿队列，出鱼概率不变"
+            return f"{name} 的鱼饵包增加 {casts} 次机会，入座后自动使用，出鱼概率不变"
         if action == "fish":
             return self._request_cast(db, uid, name, seat, now)
         if action == "leave":
@@ -269,7 +299,7 @@ class Engine:
             if seat:
                 self._release_seat(db, seat["id"])
                 self._fill_queues(db, now)
-                return f"{name} 已离开 {seat['id']} 号席，剩余好竿和未结算的礼物机会保留"
+                return f"{name} 已离开 {seat['id']} 号席，未结算的鱼饵机会保留"
             return f"{name} 已退出候补" if queued else f"{name} 当前未入席"
         if action == "join":
             if seat:
@@ -280,7 +310,9 @@ class Engine:
         return self._request_seat(db, now, uid, name, vip=True)
 
     def event(self, event_id, uid, name, action, count=1):
-        if action not in ("join", "leave", "vip", "rod", "fish", *SEASON_ACTIONS):
+        if action == "rod":
+            action = "bait"
+        if action not in ("join", "leave", "vip", "bait", "fish", *SEASON_ACTIONS):
             return "未匹配玩法指令"
         if not isinstance(event_id, str) or not event_id or not isinstance(uid, str) or not uid:
             raise ValueError("缺少事件或观众标识")
@@ -309,11 +341,20 @@ class Engine:
         return {"key": key, "name": SEASONS[key],
                 "nextChangeAt": anchor["started_at"] + (elapsed + 1) * SEASON_SECONDS}
 
+    def _day_cycle(self, db, now):
+        # A separate persisted anchor keeps every viewer on one clock, including after restart.
+        started_at = db.execute("SELECT started_at FROM day_clock WHERE id=1").fetchone()[0]
+        hours = DAY_START_HOUR + max(0, now - started_at) / DAY_SECONDS_PER_HOUR
+        return {"startedAt": started_at, "startHour": DAY_START_HOUR,
+                "secondsPerHour": DAY_SECONDS_PER_HOUR, "cycleSeconds": DAY_CYCLE_SECONDS,
+                "hour": hours % 24, "dayNumber": int(hours // 24) + 1}
+
     def state(self):
         with self._transaction(read=True) as db:
             now = time.time()
             seats = [dict(r) for r in db.execute("""
-                SELECT s.id,s.id>10 AS vip,a.name,coalesce(a.rods,0) AS rod_ready,
+                SELECT s.id,s.id>10 AS vip,a.uid,a.name,0 AS rod_ready,
+                    coalesce(a.gift_casts,0) AS bait_casts,
                     s.last_at AS last_catch_at,s.cast_started_at,s.cast_due_at,
                     s.queued_casts + CASE WHEN s.cast_due_at>0 THEN coalesce(a.gift_casts,0)-s.cast_from_gift ELSE 0 END
                         AS queued_casts,
@@ -325,18 +366,28 @@ class Engine:
                 seat["vip"] = bool(seat["vip"])
                 seat["vip_waiting"] = bool(seat["vip_waiting"])
             ranking = [dict(r) for r in db.execute("""
-                SELECT a.name,c.fish,c.mm/10.0 AS cm,c.rarity,c.size,c.rod,c.id,c.seat FROM angler a
+                SELECT a.uid,a.name,c.fish,c.mm/10.0 AS cm,c.rarity,c.size,c.rod,c.id,c.seat FROM angler a
                 JOIN catch c ON c.id=a.best ORDER BY c.mm DESC,c.id LIMIT 5
             """)]
             catches = [dict(r) for r in db.execute("""
-                SELECT id,seat,name,fish,mm/10.0 AS cm,rarity,size,rod,caught_at
+                SELECT id,uid,seat,name,fish,mm/10.0 AS cm,rarity,size,rod,caught_at
                 FROM catch ORDER BY id DESC LIMIT 12
             """)]
             waiting_vip = db.execute("SELECT count(*) FROM vip_queue").fetchone()[0]
             waiting_normal = db.execute("SELECT count(*) FROM normal_queue").fetchone()[0]
+            scene_events = [dict(id=r["id"], **json.loads(r["payload"])) for r in db.execute(
+                "SELECT * FROM (SELECT id,payload FROM scene_event ORDER BY id DESC LIMIT 64) ORDER BY id")]
             return {"mode": self.mode, "demo": self.mode == "demo", "server_time": now,
                     "season": self._season(db, now),
+                    "day_cycle": self._day_cycle(db, now),
                     "daily_free_casts": DAILY_FREE_CASTS,
+                    "bait_casts_per_gift": BAIT_CASTS_PER_GIFT,
+                    "fish_catalog": public_catalog(),
+                    "odds": {"rarities": [{"name": name, "percent": chance} for name, chance
+                                             in zip(RARITIES, RARITY_PERCENTAGES)],
+                             "sizes": [{"name": name, "percent": chance} for name, chance
+                                        in zip(SIZE_NAMES, SIZE_PERCENTAGES)]},
+                    "scene_events": scene_events,
                     "cast_seconds": self.interval, "cast_seconds_range": CAST_SECONDS_RANGE,
                     "seats": seats, "ranking": ranking,
                     "catches": catches, "waiting_vip": waiting_vip, "waiting_normal": waiting_normal}

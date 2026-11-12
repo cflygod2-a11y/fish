@@ -14,11 +14,13 @@ const announcementSeconds = 5;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const signatures = new Map();
 const inFlightReceipts = new Set();
-const rarities = ['常见', '少见', '稀有', '传说'];
+const rarities = ['常见', '少见', '稀有', '传说', '神秘'];
 const seasonKeys = ['spring', 'summer', 'autumn', 'winter'];
 const seasonShortNames = ['春', '夏', '秋', '冬'];
 let nextSeasonTime = null;
 let displayedSeconds = -1;
+let atlasSeasonKey = 'spring';
+let atlasFilter = 'all';
 const fishShape = [
   '        22     ', '       21122   ', '     21111112  ', '22  2113111112 ',
   '11221111111412 ', '211111113111112', ' 1211333333332 ', '2  2233333332  ',
@@ -72,12 +74,18 @@ function renderAtlas() {
   const atlas = $('#fish-atlas');
   if (broadcast) return;
   const {names, info} = window.FishSprites;
-  setText('#species-count', names.length + ' 种');
-  atlas.addEventListener('toggle', () => {
+  const update = () => {
+    const filteredSeason = atlasFilter === 'current' ? atlasSeasonKey : atlasFilter;
+    const visible = names.filter(name => filteredSeason === 'all' || (info(name).seasons || seasonKeys).includes(filteredSeason));
+    const currentCount = names.filter(name => (info(name).seasons || seasonKeys).includes(atlasSeasonKey)).length;
+    setText('#species-count', `${names.length} 种 · 当季 ${currentCount} 种`);
     const grid = $('#species-grid');
-    if (!atlas.open || grid.childElementCount) return;
-    grid.replaceChildren(...names.map(name => {
+    if (!atlas.open) return;
+    if (!changed('atlas', [atlasFilter, atlasSeasonKey, visible])) return;
+    grid.setAttribute('aria-label', filteredSeason === 'all' ? '全部鱼种及外形特征' : '所选季节可出现的鱼种');
+    grid.replaceChildren(...visible.map(name => {
       const data = info(name);
+      const available = data.seasons || seasonKeys;
       const card = node('li', 'species-card');
       const stage = node('div', 'species-stage');
       stage.append(speciesSprite(name, 160, 72));
@@ -85,10 +93,28 @@ function renderAtlas() {
       const header = node('div', 'species-label');
       header.append(node('h3', '', name), node('span', 'rarity r' + rarityIndex(data.rarity), data.rarity));
       caption.append(header, node('p', '', data.feature));
+      const seasonLabel = available.length === 4 ? '全年可遇' : available.map(key => seasonShortNames[seasonKeys.indexOf(key)]).join(' / ') + (available.length === 1 ? '季限定' : '可遇');
+      const meta = node('div', 'species-meta');
+      meta.append(node('span', 'species-season' + (available.includes(atlasSeasonKey) ? ' in-season' : ''), seasonLabel));
+      if (data.length) meta.append(node('span', '', `${data.length[0]}–${data.length[1]} cm`));
+      caption.append(meta);
       card.append(stage, caption);
       return card;
     }));
+    document.querySelectorAll('[data-atlas-season]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.atlasSeason === atlasFilter)));
+  };
+  atlas.addEventListener('toggle', update);
+  atlas.querySelector('.atlas-filters').addEventListener('click',e=>{
+    const button=e.target.closest('[data-atlas-season]');
+    if (!button) return;
+    atlasFilter=button.dataset.atlasSeason;
+    update();
   });
+  window.updateFishAtlas = season => {
+    if (seasonKeys.includes(season)) atlasSeasonKey=season;
+    update();
+  };
+  update();
 }
 renderAtlas();
 
@@ -142,6 +168,8 @@ function showLegendaryCatch() {
     return;
   }
   setText('#legendary-message', `${entry.name} 钓起了 ${entry.cm.toFixed(1)} 厘米长的${entry.fish}！`);
+  setText('#legendary-title', entry.rarity === '神秘' ? '✦ 神秘现身' : '✦ 传说鱼获');
+  banner.dataset.rarity = entry.rarity;
   announcementTimer = setTimeout(showLegendaryCatch, announcementSeconds * 1000);
 }
 function announceLegendaryCatches(entries, serverTime) {
@@ -149,15 +177,16 @@ function announceLegendaryCatches(entries, serverTime) {
   const newCatches = entries.filter(entry => entry.id > latestCatchId);
   if (!newCatches.length) return;
   for (const entry of newCatches.reverse()) {
-    if (entry.rarity === '传说' && (state || serverTime - entry.caught_at < announcementSeconds)) {
+    if (['传说','神秘'].includes(entry.rarity) && serverTime - entry.caught_at < 15) {
       legendaryCatches.push(entry);
+      if (legendaryCatches.length > 5) legendaryCatches.shift();
     }
   }
   latestCatchId = entries[0].id;
   if (legendaryCatches.length && announcementTimer === null) showLegendaryCatch();
 }
 function renderSeats(seats) {
-  const displayData = seats.map(s => [s.id,s.name,s.vip,s.rod_ready,s.vip_waiting,s.queued_casts,s.free_casts_left]);
+  const displayData = seats.map(s => [s.id,s.name,s.vip,s.bait_casts,s.vip_waiting,s.queued_casts,s.free_casts_left]);
   if (!changed('seats',displayData)) return;
   const occupied = seats.filter(s => s.name);
   setText('#total',occupied.length);
@@ -168,20 +197,22 @@ function renderSeats(seats) {
       const tile = node('div','berth'+(s.name?' filled':''));
       const number = String(s.id).padStart(2,'0');
       const name = s.name || '空席';
-      tile.title = number+'号 · '+name+(s.rod_ready?' · 好竿 '+s.rod_ready+' 次':'');
+      tile.title = number+'号 · '+name+(s.bait_casts?' · 鱼饵剩余 '+s.bait_casts+' 次（含进行中）':'');
       if (s.name) tile.title += ' · 今日免费剩余 '+s.free_casts_left+' 次';
       tile.append(node('span','index',number), node('span','seat-name',name));
-      if (s.rod_ready > 0) {
-        const charges = node('span','rod-count','✦'+s.rod_ready);
-        charges.setAttribute('aria-label','好竿剩余'+s.rod_ready+'次');
-        tile.append(charges);
+      const stock = node('span','seat-stock');
+      if (s.bait_casts > 0) {
+        const charges = node('span','bait-count','饵'+s.bait_casts);
+        charges.setAttribute('aria-label','鱼饵剩余'+s.bait_casts+'次，含进行中');
+        stock.append(charges);
       }
       if (s.queued_casts > 0) {
         const queued = node('span','cast-queue','+'+s.queued_casts);
         queued.title = '待下竿 '+s.queued_casts+' 次';
         queued.setAttribute('aria-label',queued.title);
-        tile.append(queued);
+        stock.append(queued);
       }
+      if (stock.childElementCount) tile.append(stock);
       return tile;
     }));
   }
@@ -208,6 +239,18 @@ function renderSeason(s, now) {
   setText('#season-name', season.name);
   setText('#season-next', '后入' + seasonShortNames[(index + 1) % seasonKeys.length]);
   updateSeasonClock(now);
+}
+function updateDayClock(now) {
+  const target = $('#day-status');
+  target.hidden = !state?.day_cycle || !window.HarborDayCycle;
+  if (target.hidden) return;
+  const day = window.HarborDayCycle.sample(state, now);
+  const part = n => String(n).padStart(2, '0');
+  const clock = part(Math.floor(day.hour)) + ':' + part(day.minute);
+  target.dataset.phase = day.phase;
+  setText('#day-phase', day.label);
+  setText('#day-clock', clock);
+  $('#day-clock').setAttribute('aria-label', `游戏时间，第 ${day.dayNumber} 天 ${clock}`);
 }
 function renderSeasonGifts(gifts, demo) {
   if (!changed('season-gifts', [gifts, demo])) return;
@@ -249,18 +292,23 @@ function renderActions(s) {
   const gifts = s.gifts || {}, tips = [];
   renderSeasonGifts(gifts.seasons, s.demo);
   if (gifts.vip) tips.push((gifts.vip_label || '席位礼物')+'入贵宾席');
-  if (gifts.rod) tips.push((gifts.rod_label || '鱼竿礼物')+' · 每件增加一次钓鱼机会');
+  if (gifts.bait) tips.push((gifts.bait_label || '鱼饵包')+' · 每份增加 '+(s.bait_casts_per_gift || 10)+' 次，出鱼概率相同');
   $('#gift-note').hidden = !tips.length;
   setText('#gift-note',tips.join(' · '));
-  $('#good-odds').hidden = !gifts.rod;
-  setText('#odds-note','体型按同一鱼种比较。每次起鱼分别抽取鱼种和体型。'+(gifts.rod?'好竿仅作用于一次抛竿。':''));
+  if (s.odds && changed('odds',s.odds)) {
+    $('#rarity-odds').replaceChildren(...s.odds.rarities.map(odds=>{
+      const row=node('tr');row.append(node('td','',odds.name),node('td','',odds.percent+'%'));return row;
+    }));
+    setText('#odds-note',s.odds.sizes.map(o=>o.name+' '+o.percent+'%').join(' / ')+'。体型按同一鱼种比较；同一稀有度内，当季可出现的鱼等概率。按起鱼时的季节确定鱼池。');
+  }
   $('#simulator').hidden = !s.demo || broadcast;
   $('#sim-vip').hidden = !gifts.vip;
-  $('#sim-rod').hidden = !gifts.rod;
+  $('#sim-bait').hidden = !gifts.bait;
 }
 function animate(now) {
   if (document.visibilityState !== 'hidden' && state && now - lastPaint >= (reduceMotion.matches ? 1000 : 50)) {
-    updateSeasonClock(performance.now());
+    updateSeasonClock(now);
+    updateDayClock(now);
     if (typeof window.drawFishingScene === 'function') {
       window.drawFishingScene($('#harbor'),state,now,$('#angler-labels'));
     }
@@ -302,13 +350,16 @@ async function refresh() {
     if (!resp.ok) throw Error();
     const s = await resp.json();
     const received = Date.now();
-    renderSeason(s, performance.now());
+    s.receivedAtMs = performance.now();
+    renderSeason(s, s.receivedAtMs);
+    window.updateFishAtlas?.(s.season?.key);
     renderActions(s);
     renderSeats(s.seats);
     renderRanking(s.ranking);
     renderCatches(s.catches);
     announceLegendaryCatches(s.catches, s.server_time);
     state=s;
+    updateDayClock(s.receivedAtMs);
     renderReceipts(s,received);
     $('#connection').hidden = true;
   } catch {
