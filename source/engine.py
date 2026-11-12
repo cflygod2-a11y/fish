@@ -9,6 +9,7 @@ import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from fish_catalog import RARITIES, SPECIES, SPECIES_BY_SEASON, is_tiny, public_catalog
+import fish_book
 
 
 SIZE_NAMES = ("普通", "大", "巨型")
@@ -101,6 +102,7 @@ class Engine:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT NOT NULL
             );
         """)
+        fish_book.create_schema(self.db)
         with self._transaction() as db:
             row = db.execute("SELECT mode FROM session_info LIMIT 1").fetchone()
             if row and row["mode"] != mode:
@@ -136,6 +138,7 @@ class Engine:
                 # gift_casts already stores individual opportunities; never multiply that balance.
                 db.execute("UPDATE angler SET rods=0")
                 db.execute("INSERT INTO schema_migration VALUES('bait_v1')")
+            fish_book.migrate_records(db)
 
     @contextmanager
     def _transaction(self, read=False):
@@ -248,6 +251,7 @@ class Engine:
         caught = db.execute("""INSERT INTO catch(uid,seat,name,fish,mm,rarity,size,rod,caught_at)
                                VALUES(?,?,?,?,?,?,?,?,?)""",
                             (uid, seat["id"], seat["name"], fish, mm, rarity, size, rod, now)).lastrowid
+        fish_book.record_catch(db, uid, fish, mm, rarity, caught, now)
         used_gift = seat["cast_from_gift"]
         db.execute("""UPDATE angler SET gift_casts=gift_casts-?, best=CASE
                       WHEN best IS NULL OR ?>(SELECT mm FROM catch WHERE id=best) THEN ?
@@ -273,6 +277,8 @@ class Engine:
             self._land_fish(db, seat, now)
         self._fill_queues(db, now)
 
+        fish_book.advance_display(db, now)
+
     def _handle(self, db, uid, name, action, count, now):
         if action in SEASON_ACTIONS:
             key = SEASON_ACTIONS[action]
@@ -280,6 +286,9 @@ class Engine:
             return f"{name} 的礼物让渔港进入{SEASONS[key]}，本季从现在起持续 10 分钟"
         db.execute("""INSERT INTO angler(uid,name) VALUES(?,?) ON CONFLICT(uid)
                       DO UPDATE SET name=excluded.name""", (uid, name))
+        is_view, target = fish_book.view_target(action)
+        if is_view:
+            return fish_book.request_view(db, uid, name, target, now)
         seat = db.execute("SELECT id,cast_due_at,queued_casts FROM seat WHERE uid=?", (uid,)).fetchone()
         if action == "bait":
             casts = count * BAIT_CASTS_PER_GIFT
@@ -312,7 +321,7 @@ class Engine:
     def event(self, event_id, uid, name, action, count=1):
         if action == "rod":
             action = "bait"
-        if action not in ("join", "leave", "vip", "bait", "fish", *SEASON_ACTIONS):
+        if action not in ("join", "leave", "vip", "bait", "fish", *SEASON_ACTIONS) and not fish_book.view_target(action)[0]:
             return "未匹配玩法指令"
         if not isinstance(event_id, str) or not event_id or not isinstance(uid, str) or not uid:
             raise ValueError("缺少事件或观众标识")
@@ -350,7 +359,8 @@ class Engine:
                 "hour": hours % 24, "dayNumber": int(hours // 24) + 1}
 
     def state(self):
-        with self._transaction(read=True) as db:
+        # Display progression is persisted so browser refreshes cannot restart animations.
+        with self._transaction() as db:
             now = time.time()
             seats = [dict(r) for r in db.execute("""
                 SELECT s.id,s.id>10 AS vip,a.uid,a.name,0 AS rod_ready,
@@ -383,6 +393,7 @@ class Engine:
                     "daily_free_casts": DAILY_FREE_CASTS,
                     "bait_casts_per_gift": BAIT_CASTS_PER_GIFT,
                     "fish_catalog": public_catalog(),
+                    "fish_book": fish_book.display_state(db, now),
                     "odds": {"rarities": [{"name": name, "percent": chance} for name, chance
                                              in zip(RARITIES, RARITY_PERCENTAGES)],
                              "sizes": [{"name": name, "percent": chance} for name, chance

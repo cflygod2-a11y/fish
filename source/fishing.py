@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from douyin import CallbackError, clean_name, read_events, subscribe
+from douyin import CallbackError, clean_name, parse_comment, read_events, subscribe
 from engine import CAST_SECONDS_RANGE, SEASON_ACTIONS, SEASONS, Engine
 from receipts import Receipts
 
@@ -25,6 +25,8 @@ DEMO_PLAYERS = ("小满", "阿潮", "星野", "橘猫", "白露", "海盐", "半
 DEMO_SEASON_GIFTS = {"spring": "春樱", "summer": "流萤", "autumn": "枫叶", "winter": "雪花"}
 FILES = {"/": ("game.html", "text/html"), "/scene.js": ("scene.js", "application/javascript"),
          "/npc.js": ("npc.js", "application/javascript"),
+         "/fishbook.js": ("fishbook.js", "application/javascript"),
+         "/fishbook.css": ("fishbook.css", "text/css"),
          "/species.js": ("species.js", "application/javascript"),
          "/game.js": ("game.js", "application/javascript"), "/game.css": ("game.css", "text/css")}
 
@@ -164,7 +166,7 @@ def main():
               for path, (filename, typ) in FILES.items() if (ASSETS / filename).is_file()}
     if "/" not in assets or "/scene.js" not in assets:
         raise FileNotFoundError("缺少画面文件，请使用完整发行包或源码目录")
-    demo_actions = ("join", "leave", "vip", "bait", "rod", "fish", *SEASON_ACTIONS)
+    demo_actions = ("join", "leave", "vip", "bait", "rod", "fish", "view", *SEASON_ACTIONS)
     done = threading.Event()
     interaction_route = "/douyin" if douyin_live else "/simulate" if not args.live else None
 
@@ -248,7 +250,13 @@ def main():
                     demo_event(game, name, "join" if index < 10 else "vip")
                 return self.send(200, {"message": "已安排体验钓手入座，空位优先，已有钓手保留。"})
             name = clean_name(req.get("name"))
-            if not name or action not in demo_actions:
+            view_action = (parse_comment("查看 " + action[5:])
+                           if isinstance(action, str) and action.startswith("view:") else None)
+            if view_action and view_action.startswith("view:"):
+                action = view_action
+            else:
+                view_action = None
+            if not name or (action not in demo_actions and not view_action):
                 return self.send(400, {"message": "请填写钓手名，并选择有效操作。"})
             count = req.get("count", 1)
             if type(count) is not int or not 1 <= count <= 100:

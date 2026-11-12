@@ -51,11 +51,11 @@ h2 {font-weight:680;font-size:18px;letter-spacing:.035em}
 .day-status[data-phase="night"] .day-orb:after {content:"";position:absolute;left:4px;top:-2px;width:8px;height:9px;background:#172a32;clip-path:polygon(2px 0,100% 0,100% 100%,2px 100%,2px 7px,0 7px,0 2px,2px 2px)}
 .scene-wrap {position:relative;background:#325963;container-type:inline-size}
 .visually-hidden {position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.npc-dialogue {position:absolute;left:1.5%;bottom:29.9%;width:max-content;max-width:calc(100% - 14px);z-index:2;pointer-events:none;filter:drop-shadow(2px 3px 0 #38464066);animation:npc-bubble-pop .12s steps(2,end)}
+.npc-dialogue {position:absolute;right:1.5%;bottom:66%;width:max-content;max-width:calc(100% - 14px);z-index:2;pointer-events:none;filter:drop-shadow(2px 3px 0 #38464066);animation:npc-bubble-pop .12s steps(2,end)}
 .npc-bubble-body {position:relative;max-width:300px;padding:8px 12px;background:#645547;clip-path:polygon(6px 0,calc(100% - 6px) 0,calc(100% - 6px) 3px,calc(100% - 3px) 3px,calc(100% - 3px) 6px,100% 6px,100% calc(100% - 6px),calc(100% - 3px) calc(100% - 6px),calc(100% - 3px) calc(100% - 3px),calc(100% - 6px) calc(100% - 3px),calc(100% - 6px) 100%,6px 100%,6px calc(100% - 3px),3px calc(100% - 3px),3px calc(100% - 6px),0 calc(100% - 6px),0 6px,3px 6px,3px 3px,6px 3px)}
 .npc-bubble-body:before {content:"";position:absolute;inset:2px;background:#fff0c8;clip-path:polygon(5px 0,calc(100% - 5px) 0,calc(100% - 5px) 3px,100% 3px,100% calc(100% - 3px),calc(100% - 5px) calc(100% - 3px),calc(100% - 5px) 100%,5px 100%,5px calc(100% - 3px),0 calc(100% - 3px),0 3px,5px 3px)}
 #npc-text {position:relative;color:#443e36;font-size:12px;font-weight:600;line-height:18px;margin:0;overflow-wrap:anywhere}
-.npc-bubble-tail {position:absolute;left:calc(6.57cqw - 8px);top:calc(100% - 2px);width:16px;height:3.65cqw;background:#645547;clip-path:polygon(0 0,100% 0,100% 35%,75% 35%,75% 65%,50% 65%,50% 100%,25% 100%,25% 35%,0 35%)}
+.npc-bubble-tail {position:absolute;right:calc(12.82cqw - 8px);top:calc(100% - 2px);width:16px;height:6.3cqw;background:#645547;clip-path:polygon(0 0,100% 0,100% 35%,75% 35%,75% 65%,50% 65%,50% 100%,25% 100%,25% 35%,0 35%)}
 .npc-bubble-tail:before {content:"";position:absolute;inset:0 3px 3px 2px;background:#fff0c8;clip-path:polygon(0 0,100% 0,100% 25%,72% 25%,72% 65%,43% 65%,43% 100%,25% 100%,25% 28%,0 28%)}
 @keyframes npc-bubble-pop {from {transform:translateY(3px)} to {transform:translateY(0)}}
 @container (max-width:430px) {.npc-bubble-body {padding:7px 10px}#npc-text {font-size:11px;line-height:16px}}
@@ -66,10 +66,15 @@ h2 {font-weight:680;font-size:18px;letter-spacing:.035em}
   text-shadow:-1px 0 #18303a,1px 0 #18303a,0 -1px #18303a,0 1px #18303a,0 2px 2px #11222b;
   font-size:clamp(7.5px,.95vw,11px);font-weight:700;line-height:1.15}
 .angler-label.vip {color:#ffe07d}
-.catch-announcement {position:absolute;inset:8px 8px auto auto;max-width:min(280px,calc(100% - 16px));pointer-events:none}
-#legendary-catch {padding:6px 9px;background:#192735ee;border:1px solid #edbd71;color:#fff2d6;box-shadow:2px 2px #101d2777}
+.catch-announcement {position:absolute;inset:6px auto auto 6px;width:260px;max-width:44%;pointer-events:none}
+#legendary-catch {padding:4px 6px;background:#192735ee;border:1px solid #edbd71;color:#fff2d6;box-shadow:2px 2px #101d2777;pointer-events:auto}
 #legendary-catch strong {display:block;color:#f9cc78;font-size:11px;letter-spacing:.08em}
-#legendary-message {margin:2px 0 0;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+#legendary-message {margin:2px 0 0;font-size:12px;line-height:14px}
+.catch-winner,.catch-species {display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.catch-result {display:flex;align-items:center;gap:5px;justify-content:space-between}
+.catch-result b {font:600 11px/14px Consolas,monospace;white-space:nowrap}
+.scene-wrap:has(#legendary-catch:not([hidden])) .npc-dialogue {max-width:46cqw}
+@container (max-width:430px) {#legendary-message {font-size:11px;line-height:13px}#legendary-catch strong {line-height:13px}.catch-result b {font-size:10px;line-height:13px}}
 .directions {display:flex;gap:7px 17px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);min-height:41px;background:#203339;font-size:12px;color:var(--soft)}
 .directions>div {gap:7px}
 kbd {padding:2px 5px;border:1px solid #739d8f;background:#274a47;color:#cfecce;font:inherit;font-weight:600;white-space:nowrap}
@@ -199,3 +204,22 @@ button.join:enabled:hover {background:#a6d6c1}
 .broadcast .panel-head,.broadcast .strip {padding-block:6px;min-height:35px}
 .broadcast #ranking-empty {min-height:60px;flex-direction:row}
 @media (prefers-reduced-motion:reduce) {*,*::before,*::after {animation-duration:.01ms !important;transition-duration:.01ms !important}}
+
+/* The personal book shares the broadcast, while fishing remains visible and active. */
+#personal-fishbook {grid-area:fishbook;min-width:0}
+.fishbook-controls {padding-top:9px}
+.fishbook-controls input {width:132px}
+.fishbook-active .dashboard {grid-template-columns:minmax(290px,1fr) minmax(0,1.9fr);grid-template-areas:"harbor fishbook" "board fishbook" "atlas atlas" "dock log" "sim sim"}
+.fishbook-active .board {align-self:start}
+.fishbook-active .harbor-panel .directions {gap:6px;font-size:11px}
+.fishbook-active .harbor-panel .harbor-weather {gap:5px;padding-inline:9px}
+.fishbook-active .harbor-panel .strip {padding-inline:9px}
+@media(max-width:760px){
+  .fishbook-active .dashboard {grid-template-columns:minmax(0,1fr);grid-template-areas:"harbor" "fishbook" "board" "atlas" "dock" "sim" "log"}
+  .fishbook-active .harbor-panel {width:100%;max-width:360px;justify-self:center}
+}
+.broadcast #personal-fishbook {order:2}
+.broadcast.fishbook-active .dashboard {display:flex;flex-direction:column}
+.broadcast.fishbook-active .harbor-panel {width:100%;max-width:360px;align-self:center}
+.broadcast.fishbook-active .board {order:3;align-self:stretch}
+.broadcast.fishbook-active .dock {order:4}

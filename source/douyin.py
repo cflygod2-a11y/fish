@@ -11,9 +11,27 @@ import urllib.request
 
 
 SIGNED_FIELDS = ("x-msg-type", "x-nonce-str", "x-roomid", "x-timestamp")
-COMMENT_ACTIONS = {"加入": "join", "离开": "leave", "钓鱼": "fish"}
+COMMENT_ACTIONS = {"加入": "join", "离开": "leave", "钓鱼": "fish", "查看": "view"}
 TOKEN_URL = "https://developer.toutiao.com/api/apps/v2/token"
 TASK_URL = "https://webcast.bytedance.com/api/live_data/task/"
+
+
+def parse_comment(content):
+    """Map complete chat commands, without using a nickname as player identity."""
+    if not isinstance(content, str):
+        return None
+    text = content.strip()
+    action = COMMENT_ACTIONS.get(text)
+    if action:
+        return action
+    # Split accepts ordinary and full-width spaces. A fish name is one token;
+    # conversational sentences such as '查看 红石斑 好大' are not commands.
+    parts = text.split()
+    if (len(parts) == 2 and parts[0] == "查看" and len(parts[1]) <= 32
+            and not any(unicodedata.category(c).startswith("C") for c in parts[1])):
+        # Unknown single names reach the engine for a useful catalogue error.
+        return "view:" + parts[1]
+    return None
 
 
 class CallbackError(ValueError):
@@ -70,7 +88,7 @@ def read_events(headers, body, secret, expected_room, gift_actions):
             continue
         if kind == "live_comment":
             content = event.get("content", "")
-            action = COMMENT_ACTIONS.get(content.strip()) if isinstance(content, str) else None
+            action = parse_comment(content)
             count = 1
         else:
             gift_id = event.get("sec_gift_id")

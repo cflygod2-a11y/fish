@@ -815,7 +815,7 @@
     else {rect(g,x-4,y+1,2,1,c);rect(g,x-2,y,2,1,c);rect(g,x,y+1,1,1,c);rect(g,x+1,y,3,1,c);}
   }
 
-  // A small supply skiff occupies the open water left of the lower pier.
+  // The supply skiff sits beyond the upper pier's right end, facing the anglers.
   // Its cat-eared deckhand uses the same integer pixels as the seated anglers.
   function baitPack(g,x,y,turn=0) {
     g.save();g.translate(Math.round(x),Math.round(y));g.rotate((turn%4)*Math.PI/2);
@@ -845,9 +845,13 @@
     return [7,-7];
   }
   function baitSkiff(g,t,frame) {
-    const bob=frame?.reduced?0:Math.round(Math.sin(t*.9)),x=31,y=179+bob;
+    const bob=frame?.reduced?0:Math.round(Math.sin(t*.9)),x=31,y=121+bob;
+    const anchorX=329,mirrorX=anchorX+x;
+    // Mirror the original integer-pixel drawing; all interaction points below
+    // are returned in scene coordinates, so throws and lanterns follow the boat.
+    g.save();g.translate(mirrorX,0);g.scale(-1,1);
     rect(g,8,y+13,51,1,"#93b7ab");rect(g,15,y+15,36,1,"#7ea599");
-    line(g,58,y+1,70,158,"#8a7964");
+    line(g,58,y+1,mirrorX-265,112,"#8a7964");
     poly(g,[[6,y-1],[12,y+1],[56,y+1],[63,y-4],[58,y+9],[49,y+12],[17,y+12],[9,y+7]],"#4e5752");
     poly(g,[[9,y+2],[55,y+2],[60,y-1],[55,y+8],[47,y+10],[18,y+10],[12,y+6]],"#a97951");
     rect(g,13,y+3,42,2,"#d5aa74");rect(g,18,y+7,32,1,"#795b48");
@@ -901,7 +905,10 @@
     // A tiny lantern identifies the supply boat after dark in every season.
     rect(g,12,y-18,1,16,"#5e5a4e");line(g,12,y-18,17,y-18,"#5e5a4e");
     rect(g,16,y-17,4,5,"#956649");rect(g,17,y-16,2,3,"#f2d38d");
-    return {x,y,release:{x:x+12,y:y-25},basket:{x:48,y:y-10}};
+    g.restore();
+    return {x:anchorX,y,release:{x:mirrorX-x-12,y:y-25},
+      basket:{x:mirrorX-48,y:y-10},lamp:{x:mirrorX-18,y:y-15},
+      reflection:{x:mirrorX-29,y:y+1}};
   }
   function deliveryRecipient(frame,scene,elapsed) {
     if(!frame?.active?.delivery||!frame.recipient)return null;
@@ -950,15 +957,16 @@
     }
   }
 
-  function nightLights(g,night,boatY) {
+  function nightLights(g,night,boat) {
     if(night<=0)return;
-    for(const [x,y] of [[10,104],[377,155],[18,boatY-15]]){
+    for(const [x,y] of [[10,104],[377,155],[boat.lamp.x,boat.lamp.y]]){
       g.globalAlpha=.065*night;ellipse(g,x,y,13,10,'#ffcc80');
       g.globalAlpha=.12*night;ellipse(g,x,y,7,6,'#ffcd84');
       g.globalAlpha=.85*night;rect(g,x-1,y-2,2,3,'#ffedb1');
     }
     g.globalAlpha=.18*night;
-    rect(g,4,112,18,1,'#ffd28d');rect(g,367,163,16,1,'#ffd28d');rect(g,13,boatY+1,16,1,'#ffd28d');
+    rect(g,4,112,18,1,'#ffd28d');rect(g,367,163,16,1,'#ffd28d');
+    rect(g,boat.reflection.x,boat.reflection.y,16,1,'#ffd28d');
     g.globalAlpha=1;
   }
 
@@ -1027,7 +1035,7 @@
     // A wild sardine briefly breaks the open water, away from all twelve hooks.
     const wildPhase=(t%8.5)/.78;
     if(wildPhase<1 && window.FishSprites) {
-      const x=302+Math.round(17*wildPhase), waterY=127;
+      const x=27+Math.round(17*wildPhase), waterY=176;
       const jump=Math.round(10*Math.sin(Math.PI*wildPhase));
       g.save();
       g.beginPath(); g.rect(x,waterY-12,15,12); g.clip();
@@ -1035,7 +1043,7 @@
       g.restore();
       if(wildPhase<.22 || wildPhase>.72) rect(g,x+2,waterY,8,1,"#c0cab2");
     }
-    // Keep lower-row names readable when the short-lived NPC bubble crosses them.
+    // Raised catch labels can reach the speech area; keep their text readable.
     const labelArea=scene.labels.length?scene.labelLayer.getBoundingClientRect():null;
     const speechPanel=labelArea?document.getElementById('npc-dialogue'):null;
     const speechRect=speechPanel&&!speechPanel.hidden?speechPanel.getBoundingClientRect():null;
@@ -1065,10 +1073,7 @@
           const half=label.offsetWidth/labelArea.width*W/2;
           const height=label.offsetHeight/labelArea.height*H;
           if(x+half>bubble.left-2&&x-half<bubble.right+2&&labelY>bubble.top-2&&labelY-height<bubble.bottom+2) {
-            const raised=Math.min(labelY,bubble.top-3);
-            // On narrow screens the bubble is taller relative to the canvas. Use the
-            // clear water under the lower pier instead of covering an upper-row angler.
-            labelY=idx>=6&&raised-height<112?y+27:raised;
+            labelY=Math.min(labelY,bubble.top-3);
           }
         }
         const top=labelY/H*100+"%";
@@ -1080,6 +1085,6 @@
     g.save();g.globalCompositeOperation='source-atop';g.globalAlpha=daylight.night*.3;
     rect(g,0,0,W,H,'#223650');g.restore();
     scene.g.drawImage(scene.front,0,0);
-    nightLights(scene.g,daylight.night,npcBoat.y);
+    nightLights(scene.g,daylight.night,npcBoat);
   };
 })();

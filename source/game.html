@@ -6,9 +6,11 @@
   <meta name="theme-color" content="#101d27">
   <title>晚汐渔港 · 弹幕钓鱼</title>
   <link rel="stylesheet" href="/game.css">
+  <link rel="stylesheet" href="/fishbook.css">
   <script src="/species.js" defer></script>
   <script src="/npc.js" defer></script>
   <script src="/scene.js" defer></script>
+  <script src="/fishbook.js" defer></script>
   <script src="/game.js" defer></script>
 </head>
 <body>
@@ -62,12 +64,14 @@
         <div class="directions">
           <div><kbd>加入</kbd><span id="cast-note">入座后发「钓鱼」下竿</span></div>
           <div class="gift-note" id="gift-note" hidden></div>
+          <div class="fishbook-guide"><kbd>查看</kbd><span>个人鱼册 · 查单鱼可发「查看 红石斑」</span></div>
           <div class="season-guide" id="season-guide" hidden>
             <span>礼物换季</span><ul id="season-gifts"></ul>
           </div>
           <div class="receipt-note" id="receipt-note" hidden aria-live="polite"></div>
         </div>
       </section>
+      <section id="personal-fishbook" hidden aria-label="观众个人鱼册"></section>
       <section class="panel board" aria-labelledby="rank-title">
         <div class="panel-head">
           <div class="head-label"><span class="trophy" aria-hidden="true">★</span><h2 id="rank-title">大鱼榜</h2></div>
@@ -123,6 +127,12 @@
         <div class="control-row season-controls" id="season-controls" hidden role="group" aria-label="模拟换季礼物">
           <span>换季礼物</span>
           <div class="sim-actions" id="season-buttons"></div>
+        </div>
+        <div class="control-row fishbook-controls" role="group" aria-label="模拟查看个人鱼册">
+          <button type="button" data-action="view">发「查看」</button>
+          <label for="fishbook-target">鱼种</label>
+          <input id="fishbook-target" maxlength="24" value="红石斑" placeholder="例如 红石斑" autocomplete="off">
+          <button type="button" data-action="view-fish">查看这条鱼</button>
         </div>
         <p id="sim-result" role="status">更换观众名字可以模拟另一位钓友。</p>
       </section>

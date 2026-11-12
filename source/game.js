@@ -167,7 +167,11 @@ function showLegendaryCatch() {
     announcementTimer = null;
     return;
   }
-  setText('#legendary-message', `${entry.name} 钓起了 ${entry.cm.toFixed(1)} 厘米长的${entry.fish}！`);
+  const winner = node('span', 'catch-winner', entry.name + ' 钓起');
+  const result = node('span', 'catch-result');
+  result.append(node('span', 'catch-species', entry.fish), node('b', '', entry.cm.toFixed(1) + ' cm'));
+  $('#legendary-message').replaceChildren(winner, result);
+  banner.title = `${entry.name} 钓起了 ${entry.cm.toFixed(1)} 厘米长的${entry.fish}！`;
   setText('#legendary-title', entry.rarity === '神秘' ? '✦ 神秘现身' : '✦ 传说鱼获');
   banner.dataset.rarity = entry.rarity;
   announcementTimer = setTimeout(showLegendaryCatch, announcementSeconds * 1000);
@@ -306,6 +310,7 @@ function renderActions(s) {
   $('#sim-bait').hidden = !gifts.bait;
 }
 function animate(now) {
+  window.FishBook?.tick(now);
   if (document.visibilityState !== 'hidden' && state && now - lastPaint >= (reduceMotion.matches ? 1000 : 50)) {
     updateSeasonClock(now);
     updateDayClock(now);
@@ -357,6 +362,7 @@ async function refresh() {
     renderSeats(s.seats);
     renderRanking(s.ranking);
     renderCatches(s.catches);
+    window.FishBook?.update(s,s.receivedAtMs);
     announceLegendaryCatches(s.catches, s.server_time);
     state=s;
     updateDayClock(s.receivedAtMs);
@@ -364,6 +370,7 @@ async function refresh() {
     $('#connection').hidden = true;
   } catch {
     $('#connection').hidden = false;
+    window.FishBook?.connectionLost?.();
   } finally {
     polling = false;
   }
@@ -394,8 +401,15 @@ async function simulate(action) {
 }
 $('#simulator').addEventListener('click', e => {
   const button = e.target.closest('button[data-action]');
-  if (button) simulate(button.dataset.action);
+  if (button) {
+    if (button.dataset.action==='view-fish') {
+      const fish=$('#fishbook-target').value.trim();
+      if (!fish) {setText('#sim-result','填写鱼名，例如「红石斑」；看全部收藏可点「查看」。');$('#fishbook-target').focus();return;}
+      simulate('view:'+fish);
+    } else simulate(button.dataset.action);
+  }
 });
+$('#fishbook-target').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const fish=e.target.value.trim();if(fish)simulate('view:'+fish);}});
 $('#viewer').addEventListener('keydown',e=>{if (e.key==='Enter') simulate('join');});
 refresh();
 setInterval(refresh,1000);

@@ -15,7 +15,7 @@ import brotli
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
-from douyin import COMMENT_ACTIONS, clean_name
+from douyin import clean_name, parse_comment
 
 
 API_HOST = "live-open.biliapi.com"
@@ -82,7 +82,7 @@ def read_event(message, room_id, gift_actions):
         return None
     if cmd in COMMENTS:
         content = data.get("msg")
-        action = COMMENT_ACTIONS.get(content.strip()) if isinstance(content, str) else None
+        action = parse_comment(content)
         kind, count = "comment", 1
     elif cmd in GIFTS:
         gift_id = data.get("gift_id")
