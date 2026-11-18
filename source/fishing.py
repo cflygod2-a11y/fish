@@ -24,9 +24,12 @@ HOME_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False
 DEMO_PLAYERS = ("小满", "阿潮", "星野", "橘猫", "白露", "海盐", "半夏", "小渔", "椰青", "薄荷", "晚风", "阿渡")
 DEMO_SEASON_GIFTS = {"spring": "春樱", "summer": "流萤", "autumn": "枫叶", "winter": "雪花"}
 FILES = {"/": ("game.html", "text/html"), "/scene.js": ("scene.js", "application/javascript"),
+         "/audio-synth.js": ("audio-synth.js", "application/javascript"),
+         "/audio.js": ("audio.js", "application/javascript"),
          "/npc.js": ("npc.js", "application/javascript"),
          "/fishbook.js": ("fishbook.js", "application/javascript"),
          "/fishbook.css": ("fishbook.css", "text/css"),
+         "/broadcast.css": ("broadcast.css", "text/css"),
          "/species.js": ("species.js", "application/javascript"),
          "/game.js": ("game.js", "application/javascript"), "/game.css": ("game.css", "text/css")}
 

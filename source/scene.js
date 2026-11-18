@@ -619,7 +619,32 @@
     return t*t*(3-2*t);
   }
   function castKey(seat) {
-    return JSON.stringify([seat.name,seat.cast_started_at,seat.cast_due_at]);
+    return JSON.stringify([seat.uid||seat.name,seat.cast_started_at,seat.cast_due_at]);
+  }
+  const castSounds = [[.54,'cast'],[.86,'plop']];
+  const reducedCastSounds = [[0,'plop']];
+  const catchSounds = [[0,'bite'],[.18,'reel'],[.38,'splash'],[1.72,'fish']];
+  const reducedCatchSounds = [[0,'fish']];
+  const deliverySounds = [[.76,'throw'],[2.16,'catchBait']];
+  const reducedDeliverySounds = [[0,'catchBait']];
+
+  // Cues follow the same local animation instance through repeated server snapshots.
+  // If several phases elapsed between frames, sound only the visible landing point.
+  function playPhase(animation, track, age, epoch, tolerance=.25) {
+    if (!epoch || animation.soundEpoch!==epoch || age<0) return;
+    const previous=animation.soundPosition??-Infinity;
+    if (age<previous) return;
+    animation.soundPosition=age;
+    for (let i=track.length-1;i>=0;i--) {
+      const [at,cue]=track[i];
+      if (age<at) continue;
+      if (previous<at && age-at<=tolerance) {
+        const rarity=animation.record?.rarity;
+        const reveal=rarity==='神秘'?'mystery':rarity==='传说'?'legend':'reveal';
+        window.HarborAudio?.play(cue==='fish'?reveal:cue);
+      }
+      break;
+    }
   }
   function interpolatePose(poses,at) {
     const next=poses.findIndex(p=>p[0]>=at);
@@ -778,7 +803,8 @@
           // Leave time for the next cast; shorten the display pause before speeding up the pull.
           const duration=seat.cast_due_at>0?Math.max(.4,Math.min(3.1,seat.cast_due_at-state.server_time-castDuration-.2)):catchDuration;
           const alreadySeen=firstSnapshot?Math.max(state.server_time-record.caught_at,catchTiming(0,duration).displayAge):0;
-          caught.set(seat.id,{record,start:time-alreadySeen,duration});
+          const soundEpoch=!firstSnapshot && record.caught_at>=state.soundSince ? state.soundEpoch : 0;
+          caught.set(seat.id,{record,start:time-alreadySeen,duration,soundEpoch});
         }
       }
     }
@@ -799,7 +825,8 @@
       const remaining=seat.cast_due_at-state.server_time-(start-time);
       // A refreshed page or a resumed old cast starts in its current holding pose.
       const play=!firstSnapshot && recent && remaining>.15;
-      casts.set(key,{start:play?start:-Infinity,duration:Math.min(castDuration,Math.max(.2,remaining-.1))});
+      const soundEpoch=play && seat.cast_started_at>=state.soundSince ? state.soundEpoch : 0;
+      casts.set(key,{start:play?start:-Infinity,duration:Math.min(castDuration,Math.max(.2,remaining-.1)),soundEpoch});
     }
     scene.casts=casts;
   }
@@ -1060,18 +1087,24 @@
       const cast=scene.casts.get(castKey(seat));
       let labelY=y-(idx<6?25:21);
       if(catchAnimation && window.FishSprites && elapsed-catchAnimation.start<catchAnimation.duration) {
+        const elapsedCatch=elapsed-catchAnimation.start;
+        if (motionPreference?.matches) playPhase(catchAnimation,reducedCatchSounds,elapsedCatch,state.soundEpoch,1.1);
+        else playPhase(catchAnimation,catchSounds,catchTiming(elapsedCatch,catchAnimation.duration).at,state.soundEpoch);
         const age=motionPreference?.matches?catchTiming(0,catchAnimation.duration).displayAge:elapsed-catchAnimation.start;
         labelY=Math.min(labelY,celebrateCatch(g,x,y,idx,catchAnimation.record,age,catchAnimation.duration,seat,receiver?.seat===id?receiver:null)-3);
       } else if(seat.name && cast && elapsed>=cast.start && elapsed-cast.start<cast.duration && !motionPreference?.matches) {
+        playPhase(cast,castSounds,(elapsed-cast.start)/cast.duration,state.soundEpoch);
         castingAngler(g,x,y,idx,seat,elapsed-cast.start,cast.duration,receiver?.seat===id?receiver:null);
       } else if(seat.name) {
+        if (cast && motionPreference?.matches) playPhase(cast,reducedCastSounds,elapsed-cast.start,state.soundEpoch,1.1);
         angler(g,x,y,idx,seat,t,receiver?.seat===id?receiver:null);
       }
       const label=scene.labels[idx];
       if(label && !label.hidden) {
         if(bubble) {
-          const half=label.offsetWidth/labelArea.width*W/2;
-          const height=label.offsetHeight/labelArea.height*H;
+          const labelRect=label.getBoundingClientRect();
+          const half=labelRect.width/labelArea.width*W/2;
+          const height=labelRect.height/labelArea.height*H;
           if(x+half>bubble.left-2&&x-half<bubble.right+2&&labelY>bubble.top-2&&labelY-height<bubble.bottom+2) {
             labelY=Math.min(labelY,bubble.top-3);
           }
@@ -1082,6 +1115,9 @@
       numberPlate(g,x,y,id,vip,Boolean(seat.name));
     });
     deliveryPack(g,npcFrame,npcBoat,delivery);
+    if (npcFrame?.active?.delivery) {
+      playPhase(npcFrame.active,npcFrame.reduced?reducedDeliverySounds:deliverySounds,npcFrame.age,state.soundEpoch,npcFrame.reduced?1.1:.25);
+    }
     g.save();g.globalCompositeOperation='source-atop';g.globalAlpha=daylight.night*.3;
     rect(g,0,0,W,H,'#223650');g.restore();
     scene.g.drawImage(scene.front,0,0);

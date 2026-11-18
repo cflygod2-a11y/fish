@@ -1,8 +1,46 @@
 'use strict';
 const $ = selector => document.querySelector(selector);
 const broadcast = new URLSearchParams(location.search).get('broadcast') === '1';
-if (broadcast) document.body.classList.add('broadcast');
+if (broadcast) {
+  document.body.classList.add('broadcast');
+  const shell = document.querySelector('.shell');
+  const fullscreen = document.getElementById('broadcast-fullscreen');
+  const desktop = matchMedia('(min-width: 760px) and (orientation: landscape)');
+  function fitBroadcast() {
+    document.body.classList.toggle('broadcast-wide', desktop.matches);
+    fullscreen.hidden = !desktop.matches || !document.fullscreenEnabled;
+    if (desktop.matches) {
+      const scale = Math.min(innerWidth / 1280, innerHeight / 720);
+      shell.style.setProperty('--broadcast-scale', String(scale));
+    } else {
+      shell.style.removeProperty('--broadcast-scale');
+    }
+  }
+  fitBroadcast();
+  addEventListener('resize', fitBroadcast);
+  document.addEventListener('fullscreenchange', () => {
+    fullscreen.textContent = document.fullscreenElement ? '退出全屏' : '全屏';
+    fitBroadcast();
+  });
+  fullscreen.addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      fullscreen.textContent = '请按 F11 全屏';
+    }
+  });
+}
 let state = null;
+let soundEpoch = 1;
+// A new stream begins with a silent snapshot after a tab switch or a lost poll.
+function resetSoundStream() {
+  if (state?.soundEpoch) {
+    state.soundEpoch = 0;
+    soundEpoch++;
+  }
+}
+document.addEventListener('visibilitychange', resetSoundStream);
 let polling = false;
 let sending = false;
 let lastPaint = -Infinity;
@@ -356,7 +394,12 @@ async function refresh() {
     const s = await resp.json();
     const received = Date.now();
     s.receivedAtMs = performance.now();
+    if (state && s.receivedAtMs - state.receivedAtMs > 3000) resetSoundStream();
+    s.soundEpoch = document.hidden ? 0 : soundEpoch;
+    s.soundSince = state && state.soundEpoch === s.soundEpoch && s.soundEpoch
+      ? state.server_time : Infinity;
     renderSeason(s, s.receivedAtMs);
+    window.HarborAudio?.setEnvironment(s.season?.key, s.day_cycle?.hour);
     window.updateFishAtlas?.(s.season?.key);
     renderActions(s);
     renderSeats(s.seats);
@@ -370,6 +413,7 @@ async function refresh() {
     $('#connection').hidden = true;
   } catch {
     $('#connection').hidden = false;
+    resetSoundStream();
     window.FishBook?.connectionLost?.();
   } finally {
     polling = false;

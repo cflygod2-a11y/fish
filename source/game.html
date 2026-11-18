@@ -7,6 +7,9 @@
   <title>晚汐渔港 · 弹幕钓鱼</title>
   <link rel="stylesheet" href="/game.css">
   <link rel="stylesheet" href="/fishbook.css">
+  <link rel="stylesheet" href="/broadcast.css">
+  <script src="/audio-synth.js" defer></script>
+  <script src="/audio.js" defer></script>
   <script src="/species.js" defer></script>
   <script src="/npc.js" defer></script>
   <script src="/scene.js" defer></script>
@@ -22,6 +25,21 @@
       </div>
       <div class="tools">
         <span class="mode" id="mode"><i></i><span>连接中</span></span>
+        <details class="sound-settings" id="sound-settings">
+          <summary title="声音设置"><i class="sound-meter" aria-hidden="true"></i><span>声音</span></summary>
+          <div class="sound-panel">
+            <p class="sound-status" id="sound-status" role="status">声音已关闭</p>
+            <div class="sound-actions">
+              <button type="button" id="sound-toggle">开启声音</button>
+              <button type="button" id="sound-mute" hidden>全部静音</button>
+            </div>
+            <label for="sound-effects">游戏音效 <output id="sound-effects-value" for="sound-effects">55%</output></label>
+            <input type="range" id="sound-effects" min="0" max="100" value="55">
+            <label for="sound-ambience">港口环境 <output id="sound-ambience-value" for="sound-ambience">20%</output></label>
+            <input type="range" id="sound-ambience" min="0" max="100" value="20">
+          </div>
+        </details>
+        <button id="broadcast-fullscreen" type="button" hidden>全屏</button>
         <a class="broadcast-link" href="/?broadcast=1" target="_blank" rel="noopener">投屏画面 <b aria-hidden="true">↗</b></a>
       </div>
     </header>

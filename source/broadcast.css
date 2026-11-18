@@ -1,0 +1,182 @@
+/* The desktop broadcast shell is fitted to the window as a 1280 × 720 stage. */
+.broadcast-wide .shell {
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+.broadcast-wide .mast { margin: 0; z-index: 5; }
+.broadcast-wide .mast h1 { font-size: 30px; }
+.broadcast-wide .emblem { width: 46px; height: 38px; }
+.broadcast-wide .emblem canvas { width: 42px; height: 28px; }
+.broadcast-wide .tools { font-size: 14px; }
+.broadcast-wide .connection {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  left: 35%;
+  right: 35%;
+  text-align: center;
+  pointer-events: none;
+}
+.broadcast-wide .dashboard {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-rows: minmax(0, 1.02fr) minmax(0, 1fr);
+  grid-template-areas: "harbor board" "harbor dock";
+  align-items: stretch;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* Share a header so that the whole stage can use the original canvas ratio. */
+.broadcast-wide .harbor-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 44px auto minmax(0, 1fr);
+  grid-template-areas: "title weather" "scene scene" "guide guide";
+  min-height: 0;
+}
+.broadcast-wide .strip { grid-area: title; gap: 15px; padding: 5px 14px; }
+.broadcast-wide .harbor-weather { grid-area: weather; padding: 4px 12px; }
+.broadcast-wide .scene-wrap { grid-area: scene; align-self: start; }
+.broadcast-wide .angler-label { font-size: 13px; }
+.broadcast-wide #npc-text { font-size: 14px; line-height: 19px; }
+.broadcast-wide .directions {
+  grid-area: guide;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: center;
+  gap: 6px 18px;
+  padding: 8px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.broadcast-wide .directions > :first-child { grid-column: 1; grid-row: 1; }
+.broadcast-wide .fishbook-guide { grid-column: 2; grid-row: 1; }
+.broadcast-wide .directions :is(.gift-note, .season-guide, .receipt-note) { grid-column: 1 / -1; }
+.broadcast-wide .receipt-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.broadcast-wide .panel-head { min-height: 37px; padding: 5px 13px; }
+.broadcast-wide .panel-head h2 { font-size: 17px; }
+.broadcast-wide .board { display: flex; flex-direction: column; min-height: 0; }
+.broadcast-wide .ranking { padding: 0 10px; }
+.broadcast-wide .rank-row { height: 52px; min-height: 0; padding: 2px 0; gap: 6px; }
+.broadcast-wide .rank-no { width: 19px; }
+.broadcast-wide .rank-row .sprite { width: 54px; height: 34px; }
+.broadcast-wide .rank-row .fish-name { font-size: 15px; }
+.broadcast-wide .rank-row .angler { font-size: 13px; }
+.broadcast-wide #ranking-empty { flex: 1; }
+.broadcast-wide .dock .panel-head .subtle { max-width: 205px; font-size: 11px; text-align: right; }
+.broadcast-wide .seat-head { margin: 8px 11px 6px; }
+.broadcast-wide .seat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 0 10px; }
+.broadcast-wide .berth {
+  grid-template-columns: 17px minmax(0, 1fr) auto;
+  min-height: 31px;
+  padding: 2px 5px;
+  gap: 3px;
+}
+.broadcast-wide .berth .seat-name { font-size: 13px; }
+.broadcast-wide .seat-stock { grid-column: 3; max-width: 60px; }
+.broadcast-wide .seat-stock span { overflow: hidden; text-overflow: ellipsis; }
+
+/* Keep the book at reading size; the other three panels stay live on its right. */
+.broadcast-wide.fishbook-active .dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 274px 292px;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "fishbook harbor harbor" "fishbook board dock";
+  padding-bottom: 72px;
+}
+.broadcast-wide.fishbook-active .harbor-panel {
+  grid-template-rows: 34px auto;
+  grid-template-areas: "title weather" "scene scene";
+  align-self: start;
+  width: 100%;
+  max-width: none;
+  /* The directions are anchored to the dashboard below the three live panels. */
+  overflow: visible;
+}
+.broadcast-wide.fishbook-active .strip { gap: 10px; }
+.broadcast-wide.fishbook-active .harbor-weather { flex-wrap: nowrap; }
+.broadcast-wide.fishbook-active .angler-label { font-size: 10px; }
+.broadcast-wide.fishbook-active #npc-text { font-size: 12px; line-height: 16px; }
+.broadcast-wide.fishbook-active .directions {
+  position: absolute;
+  grid-area: auto;
+  inset: auto 0 0;
+  height: 62px;
+  grid-template-columns: auto 1fr;
+  grid-auto-flow: row;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  gap: 3px 20px;
+  padding: 4px 12px;
+}
+.broadcast-wide.fishbook-active .directions .gift-note { grid-row: 2; grid-column: 1; }
+.broadcast-wide.fishbook-active .directions .season-guide { grid-row: 2; grid-column: 2; }
+.broadcast-wide.fishbook-active .directions:has(.receipt-note:not([hidden])) {
+  height: 68px;
+  row-gap: 1px;
+  padding-block: 2px;
+}
+.broadcast-wide.fishbook-active .board,
+.broadcast-wide.fishbook-active .dock { align-self: stretch; }
+.broadcast-wide.fishbook-active .panel-head { min-height: 30px; padding: 3px 9px; }
+.broadcast-wide.fishbook-active .panel-head h2 { font-size: 15px; }
+.broadcast-wide.fishbook-active .rank-row { height: 36px; gap: 4px; }
+.broadcast-wide.fishbook-active .rank-row .sprite { width: 38px; height: 26px; }
+.broadcast-wide.fishbook-active .fish-desc { gap: 0; }
+.broadcast-wide.fishbook-active .rank-row .fish-name { font-size: 13px; line-height: 16px; }
+.broadcast-wide.fishbook-active .rank-row .angler { font-size: 11px; line-height: 14px; }
+.broadcast-wide.fishbook-active .rank-row .measurement { font-size: 16px; }
+.broadcast-wide.fishbook-active .seat-head { margin: 3px 8px 2px; line-height: 15px; }
+.broadcast-wide.fishbook-active .seat-grid { gap: 3px; padding: 0 8px; }
+.broadcast-wide.fishbook-active .berth { min-height: 20px; line-height: 16px; padding: 1px 3px; }
+.broadcast-wide.fishbook-active .berth .seat-name { font-size: 12px; }
+
+/* During entrance/exit, leave room for the book's animated translation. */
+.broadcast-wide #personal-fishbook {
+  align-self: stretch;
+  margin: 0 0 14px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+.broadcast-wide .fb-header { padding: 8px 14px; gap: 10px; }
+.broadcast-wide .fb-owner { font-size: 19px; line-height: 1.22; }
+.broadcast-wide .fb-eyebrow { letter-spacing: 1px; }
+.broadcast-wide .fb-footer { padding: 7px 12px; font-size: 12px; }
+.broadcast-wide .fb-next { line-height: 1.3; }
+.broadcast-wide .fb-body { padding: 12px; min-height: 0; }
+.broadcast-wide .fb-album-body {
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 12px;
+}
+.broadcast-wide .fb-album-heading { padding-bottom: 6px; margin-bottom: 8px; }
+.broadcast-wide .fb-grid { gap: 6px; }
+.broadcast-wide .fb-tile { padding: 5px 6px; }
+.broadcast-wide .fb-picture { height: 47px; }
+.broadcast-wide .fb-tile-name { font-size: 13px; }
+.broadcast-wide .fb-single { justify-content: center; gap: 6px; }
+.broadcast-wide .fb-single .fb-ocean { height: 120px; }
+.broadcast-wide .fb-record-heading h3 { margin-top: 2px; }
+.broadcast-wide .fb-record-change { line-height: 1.2; }
+.broadcast-wide .fb-discovery-body { padding: 0; }
+.broadcast-wide .fb-ceremony {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  min-height: 0;
+  height: 100%;
+}
+.broadcast-wide .fb-ceremony-heading { padding: 6px 10px 4px; }
+.broadcast-wide .fb-ceremony-heading h3 { font-size: 21px; margin: 2px 0; }
+.broadcast-wide .fb-ceremony-space { height: auto; min-height: 0; align-self: center; }
+.broadcast-wide .fb-flight { height: 286px; width: 220px; }
+.broadcast-wide .fb-front .fb-card { min-height: 0; }
+.broadcast-wide .fb-front .fb-ocean { height: 112px; }
+.broadcast-wide .fb-reverse .fb-ocean { height: 132px; }
+.broadcast-wide .fb-seal { bottom: 94px; }
+.broadcast-wide .fb-ceremony-caption { padding: 2px 10px; min-height: 20px; }
+.broadcast-wide .fb-collection-add { padding: 2px 10px 6px; }

@@ -7,6 +7,7 @@
   const seasons={spring:'春',summer:'夏',autumn:'秋',winter:'冬'};
   const sprites=new Map();
   let current=null,showKey='',queue=[],serverAnchor=0,monoAnchor=0,lastClock=0,page=-1,lastPaint=-1,connected=true;
+  let soundState=null,soundKey='',soundAge=Infinity;
   let header,owner,count,body,footer,pageText,nextText,timer,grid,feature,ceremony,flight,flip,seal,caption,fx,fxCanvas;
   const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const number=value=>Number.isFinite(Number(value))?Number(value):0;
@@ -121,9 +122,14 @@
     if(burst>0&&burst<2.5)for(let i=0;i<count;i++){const angle=i*2.39996323,d=30+burst*(24+i%9*5),x=Math.round(cx+Math.cos(angle)*d),y=Math.round(cy+Math.sin(angle)*d*.8+burst*burst*5);fx.fillStyle=i%3===0?'#fff0bb':color;fx.globalAlpha=(1-burst/2.5)*.8;fx.fillRect(x,y,2,2);if(i%7===0){fx.fillRect(x-2,y+1,6,1);fx.fillRect(x+1,y-2,1,6);}}
     fx.globalAlpha=1;
   }
+  function discoveryTiming(duration){
+    const intro=duration>=4.6?.9:duration>=4?.76:.58;
+    const flipTime=duration>=4.6?.7:duration>=4?.65:.5;
+    return {intro,flipTime};
+  }
   function discoveryFrame(age,duration){
     const c=catchCard(),rarity=c.rarity;
-    let intro=duration>=4.6?.9:duration>=4?.76:.58,flipTime=duration>=4.6?.7:duration>=4?.65:.5;
+    const {intro,flipTime}=discoveryTiming(duration);
     const holdAt=intro+flipTime,settleAt=duration-.6;
     const phase=age<intro?'summon':age<holdAt?'reveal':age<settleAt?'hold':'settle';
     ceremony.dataset.phase=reduced.matches?'hold':phase;
@@ -145,6 +151,31 @@
     if(bridge){root.hidden=false;document.body.classList.add('fishbook-active');root.style.opacity='1';root.style.transform='none';pageText.textContent='准备下一位';timer.textContent='';updateQueue();return;}
     root.hidden=true;document.body.classList.remove('fishbook-active');
   }
+  function playBookSound(age,duration){
+    const previous=soundAge;
+    soundAge=age;
+    if (!connected || !soundState?.soundEpoch || document.hidden || age<previous) return;
+    // New polls can introduce an already opening card. Page turns and later beats
+    // must still cross their actual animation boundary, never replay a missed series.
+    const crossed=(at,late=.3)=>previous<at && age>=at && age-at<=late;
+    let cue;
+    if (current.kind==='discovery') {
+      const {intro,flipTime}=discoveryTiming(duration);
+      if (reduced.matches) {
+        if (crossed(0,1.2)) cue='first';
+      } else if (crossed(intro+flipTime+.12)) cue='stamp';
+      else if (crossed(intro,1)) cue='first';
+    } else if (current.kind==='record') {
+      if (crossed(0,1.2)) cue='record';
+    } else {
+      const contentAt=number(current.content_started_at)-number(current.started_at);
+      const pageIndex=Math.floor((age-contentAt)/4);
+      if (crossed(duration-.3)) cue='bookClose';
+      else if (current.kind==='album' && pageIndex>0 && pageIndex<Math.ceil(cards().length/9) && crossed(contentAt+4*pageIndex)) cue='page';
+      else if (crossed(0,1.2)) cue='bookOpen';
+    }
+    if (cue) window.HarborAudio?.play(cue);
+  }
   function tick(now=performance.now()){
     const clock=Math.max(lastClock,serverAnchor+Math.max(0,now-monoAnchor)/1000);lastClock=clock;
     if(!current||clock<number(current.started_at)||clock>=number(current.ends_at)){
@@ -154,6 +185,7 @@
     root.classList.remove('fb-between');
     root.hidden=false;document.body.classList.add('fishbook-active');
     const age=Math.max(0,clock-number(current.started_at)),duration=number(current.duration)||number(current.ends_at)-number(current.started_at),remaining=Math.max(0,number(current.ends_at)-clock);
+    playBookSound(age,duration);
     timer.textContent=Math.ceil(remaining)+'s';
     let opacity=1,offset=0;
     if(!reduced.matches){opacity=Math.min(clamp(age/.3),clamp(remaining/.3));offset=14*(1-ease(age/.5))+8*(1-clamp(remaining/.3));}
@@ -172,8 +204,14 @@
   }
   function update(state,receivedAtMs=performance.now()){
     const payload=state?.fish_book||{};connected=true;serverAnchor=number(state?.server_time);monoAnchor=receivedAtMs;queue=Array.isArray(payload.queue)?payload.queue:[];
+    soundState=state;
     current=payload.current||null;
-    if(!current){showKey='';hide();return;}
+    if(!current){showKey='';soundKey='';hide();return;}
+    const nextSoundKey=String(current.id)+'|'+String(current.started_at);
+    if (nextSoundKey!==soundKey || !Number.isFinite(state.soundSince)) {
+      soundKey=nextSoundKey;
+      soundAge=current.started_at>=state.soundSince?-1:Math.max(0,serverAnchor-current.started_at);
+    }
     const key=String(current.id)+'|'+String(current.started_at)+'|'+current.kind+'|'+ownerName();
     if(key!==showKey){showKey=key;shell();}
     else if(owner){owner.textContent=ownerName()+'的鱼册';}

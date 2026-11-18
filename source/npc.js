@@ -132,7 +132,8 @@
       if(e.id<=c.watermark)continue;c.watermark=e.id;
       // A tab restored after a long absence must not replay old gifts or greetings.
       if(c.serverTime-Number(e.at)>25)continue;
-      enqueue(c,e,c.received);
+      const soundEpoch=e.at>=state.soundSince ? state.soundEpoch : 0;
+      enqueue(c,{...e,soundEpoch},c.received);
     }
   }
   function target(event,state) {
@@ -158,6 +159,8 @@
         if(kind==='tiny')c.lastTiny=now;
         const detail=next.kind==='bait'?`${Number(next.count)||1} 份鱼饵包 · 增加 ${Number(next.casts)||10} 次 · 概率不变`:label(next);
         speak(c,pick(c,kind,next),detail,kind,now);c.lastSpoken=now;c.lastIdle=now;
+        if(next.soundEpoch && next.soundEpoch===state.soundEpoch && (kind==='join'||kind==='bait') && next.id%4===1)
+          window.HarborAudio?.play('meow');
       } else if(now-c.lastIdle>=35&&now-c.lastSpoken>=12) {
         speak(c,pick(c,'idle'),'鱼饵小船 · 随时待命','idle',now);c.lastIdle=now;
       }
