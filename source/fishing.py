@@ -105,7 +105,7 @@ def gift_configuration(live, platform="douyin"):
                      "bait_casts_per_gift": 10, "seasons": seasons}
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="晚汐渔港 · 弹幕钓鱼")
     parser.add_argument("--live", action="store_true", help="连接已获授权的真实直播间")
     parser.add_argument("--platform", choices=("douyin", "bilibili"), default="douyin",
@@ -117,7 +117,7 @@ def main():
                         help=f"指定固定等待秒数（默认随机 {CAST_SECONDS_RANGE[0]}–{CAST_SECONDS_RANGE[1]} 秒）")
     parser.add_argument("--port", type=int, default=8786)
     parser.add_argument("--data", type=Path, default=HOME_DIR / "saves", help="存档目录")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.interval is not None and not 1 <= args.interval <= 3600:
         parser.error("interval 取 1 到 3600 秒")
     if not 0 <= args.port <= 65535:
